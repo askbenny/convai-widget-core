@@ -28,13 +28,13 @@ export function AttributesProvider({
   const signals = useMemo(
     () =>
       Object.fromEntries(
-        CustomAttributeList.map(key => [key, signal(value[key])])
+        CustomAttributeList.map((key) => [key, signal(value[key])])
       ) as AttributeSignals,
     []
   );
 
   // Update signals with overrides passed via custom HTML attributes
-  CustomAttributeList.forEach(key => {
+  CustomAttributeList.forEach((key) => {
     signals[key].value = value[key];
   });
 
