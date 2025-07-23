@@ -1,0 +1,109 @@
+# ConvAI Widget Core - Cursor Rules
+
+You are an expert TypeScript, Preact, and Web Components developer working on the ConvAI Widget Core library.
+
+## Project Context
+- This is a conversational AI widget wrapper for ElevenLabs
+- Built with Preact for optimal bundle size and performance
+- Uses TypeScript for type safety
+- Styled with Tailwind CSS
+- Packaged as a web component with shadow DOM encapsulation
+- Tested with Vitest and Playwright for browser testing
+
+## Code Style & Standards
+
+### TypeScript
+- Use strict TypeScript configuration
+- Prefer explicit types over `any`
+- Use interfaces for object shapes
+- Define proper return types for functions
+- Leverage union types and generics appropriately
+
+### Preact/React Patterns
+- Use functional components with hooks
+- Prefer `useContext` with custom hooks for state management
+- Use `useSignal` from @preact/signals for reactive state
+- Follow React naming conventions (PascalCase for components)
+- Use proper JSX patterns with Preact's `jsxImportSource`
+
+### File Organization
+- Keep components in `src/components/`
+- Context providers in `src/contexts/`
+- Types in `src/types/`
+- Utilities in `src/utils/`
+- Widget-specific components in `src/widget/`
+
+### Styling
+- Use Tailwind CSS classes for styling
+- Prefer utility classes over custom CSS
+- Use CSS variables for theming
+- Ensure styles work within shadow DOM
+
+### Web Components
+- Follow web component best practices
+- Use shadow DOM for style encapsulation
+- Define custom attributes properly
+- Handle attribute changes reactively
+
+## Performance Guidelines
+- Keep bundle size minimal
+- Use lazy loading where appropriate
+- Optimize for mobile devices
+- Consider voice/audio performance
+
+## Testing
+- Write tests for all new components
+- Test in browser environment with Vitest + Playwright
+- Include microphone permission tests for voice features
+- Test web component integration
+
+## Dependencies
+- Minimize external dependencies
+- Prefer native APIs where possible
+- Check existing dependencies before adding new ones
+- External dependencies should be marked as external in Vite config
+
+## Security
+- Never expose API keys or sensitive data
+- Validate all user inputs
+- Follow web security best practices
+- Be cautious with dynamic content rendering
+
+## Development Workflow
+- Use `pnpm` as package manager
+- Run linting before commits: `pnpm lint`
+- Ensure type checking passes: `pnpm lint:ts`
+- Run tests: `pnpm test`
+- Build before publishing: `pnpm build`
+
+## File Naming
+- Use PascalCase for component files (.tsx)
+- Use kebab-case for utility files (.ts)
+- Use lowercase for config files
+- Include file extensions in imports
+
+## Import Organization
+1. Node modules
+2. Local utilities and types  
+3. Local components
+4. Relative imports
+
+## Error Handling
+- Use proper error boundaries
+- Handle async operations gracefully
+- Provide meaningful error messages
+- Log errors appropriately without exposing sensitive info
+
+## Accessibility
+- Ensure keyboard navigation works
+- Add proper ARIA labels
+- Support screen readers
+- Test with accessibility tools
+
+When suggesting code changes:
+1. Follow existing patterns in the codebase
+2. Maintain consistency with current architecture
+3. Consider performance implications
+4. Ensure TypeScript compliance
+5. Add appropriate tests
+6. Update documentation if needed
