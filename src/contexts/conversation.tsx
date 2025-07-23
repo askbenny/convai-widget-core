@@ -171,13 +171,13 @@ function useConversationSetup() {
         try {
           lockRef.current = Conversation.startSession({
             ...processedConfig,
-            onModeChange: props => {
+            onModeChange: (props) => {
               mode.value = props.mode;
             },
-            onStatusChange: props => {
+            onStatusChange: (props) => {
               status.value = props.status;
             },
-            onCanSendFeedbackChange: props => {
+            onCanSendFeedbackChange: (props) => {
               canSendFeedback.value = props.canSendFeedback;
             },
             onMessage: ({ source, message }) => {
@@ -203,7 +203,7 @@ function useConversationSetup() {
                 },
               ];
             },
-            onDisconnect: details => {
+            onDisconnect: (details) => {
               conversationTextOnly.value = null;
               transcript.value = [
                 ...transcript.value,
@@ -301,7 +301,7 @@ function triggerCallEvent(
   config: SessionConfig
 ): SessionConfig {
   try {
-    const event = new CustomEvent("elevenlabs-convai:call", {
+    const event = new CustomEvent("askbenny-convai:call", {
       bubbles: true,
       composed: true,
       detail: { config },

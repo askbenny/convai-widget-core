@@ -4,17 +4,17 @@ import { Worker } from "./mocks/browser";
 import { setupWebComponent } from "./mocks/web-component";
 import { Variants } from "./types/config";
 
-describe("elevenlabs-convai", () => {
+describe("askbenny-convai", () => {
   beforeAll(() => Worker.start({ quiet: true }));
   afterAll(() => Worker.stop());
 
   it("should register a custom component", async () => {
-    expect(window.customElements.get("elevenlabs-convai")).toBeDefined();
+    expect(window.customElements.get("askbenny-convai")).toBeDefined();
   });
 
   it.each(Variants)(
     "$0 variant should go through a happy path",
-    async variant => {
+    async (variant) => {
       setupWebComponent({ "agent-id": "basic", variant });
 
       const startButton = page.getByRole("button", { name: "Start a call" });
@@ -33,7 +33,7 @@ describe("elevenlabs-convai", () => {
 
   it.each(Variants)(
     "$0 expandable variant should go through a happy path",
-    async variant => {
+    async (variant) => {
       setupWebComponent({
         "agent-id": "basic",
         transcript: "true",
@@ -95,7 +95,7 @@ describe("elevenlabs-convai", () => {
 
   it.each(Variants)(
     "$0 expandable variant should go through a happy path (text-only)",
-    async variant => {
+    async (variant) => {
       setupWebComponent({
         "agent-id": "text_only",
         variant,
@@ -140,7 +140,7 @@ describe("elevenlabs-convai", () => {
     }
   );
 
-  it.each(Variants)("$0 variant should handle errors", async variant => {
+  it.each(Variants)("$0 variant should handle errors", async (variant) => {
     setupWebComponent({ "agent-id": "basic", variant });
 
     const startButton = page.getByRole("button", { name: "Start a call" });
@@ -157,7 +157,7 @@ describe("elevenlabs-convai", () => {
 
   it.each(Variants)(
     "$0 expandable variant should handle errors",
-    async variant => {
+    async (variant) => {
       setupWebComponent({
         "agent-id": "fail",
         transcript: "true",

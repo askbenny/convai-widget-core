@@ -36,7 +36,7 @@ npm install @askbenny/convai-widget-core
     registerWidget();
     
     // Create and configure the widget
-    const widget = document.createElement('elevenlabs-convai');
+    const widget = document.createElement('askbenny-convai');
     widget.setAttribute('agent-id', 'your-agent-id');
     document.body.appendChild(widget);
   </script>
@@ -58,12 +58,12 @@ registerWidget('my-convai-widget');
 The widget accepts various attributes for customization:
 
 ```html
-<elevenlabs-convai
+<askbenny-convai
   agent-id="your-agent-id"
   server-location="us"
   language="en"
   trigger-style="compact"
-></elevenlabs-convai>
+></askbenny-convai>
 ```
 
 ## Development
