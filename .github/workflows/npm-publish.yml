@@ -91,6 +91,7 @@ jobs:
               id: bump_version
 
             - name: Build
+              if: steps.check_npm.outputs.exists == 'false'
               run: pnpm build
 
             - name: Publish to NPM
