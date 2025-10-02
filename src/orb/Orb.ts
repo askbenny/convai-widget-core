@@ -2,11 +2,8 @@ import fragmentCode from "./OrbShader.frag?raw";
 import vertexCode from "./OrbShader.vert?raw";
 
 const POSITION_LOCATION = 0;
-const QUAD_POSITIONS = new Float32Array([
-  -1.0, 1.0, -1.0, -1.0, 1.0, 1.0, 1.0, -1.0,
-]);
-const PERLIN_NOISE =
-  "https://storage.googleapis.com/eleven-public-cdn/images/perlin-noise.png";
+const QUAD_POSITIONS = new Float32Array([-1.0, 1.0, -1.0, -1.0, 1.0, 1.0, 1.0, -1.0]);
+const PERLIN_NOISE = "https://storage.googleapis.com/eleven-public-cdn/images/perlin-noise.png";
 
 export class Orb {
   private static noiseImage: HTMLImageElement;
@@ -31,7 +28,7 @@ export class Orb {
     this.gl = gl;
     this.program = this.setupProgram(fragmentCode, vertexCode);
     if (import.meta.hot) {
-      import.meta.hot.accept("./OrbShader.frag?raw", module => {
+      import.meta.hot.accept("./OrbShader.frag?raw", (module) => {
         this.program = this.setupProgram(module!.default, vertexCode);
       });
     }
@@ -68,7 +65,7 @@ export class Orb {
 
     this.updateColors("#2792DC", "#9CE6E6");
 
-    this.resizeObserver = new ResizeObserver(entries => {
+    this.resizeObserver = new ResizeObserver((entries) => {
       const entry = entries[0];
       const size = entry.devicePixelContentBoxSize
         ? entry.devicePixelContentBoxSize[0]
@@ -85,7 +82,7 @@ export class Orb {
         this.resizeObserver.observe(parent, {
           box: "device-pixel-content-box",
         });
-      } catch (e) {
+      } catch {
         this.resizeObserver.observe(parent);
       }
     }
@@ -121,14 +118,8 @@ export class Orb {
       this.speed = this.targetSpeed;
     }
 
-    this.gl.uniform1f(
-      this.gl.getUniformLocation(this.program, "uInputVolume"),
-      input
-    );
-    this.gl.uniform1f(
-      this.gl.getUniformLocation(this.program, "uOutputVolume"),
-      output
-    );
+    this.gl.uniform1f(this.gl.getUniformLocation(this.program, "uInputVolume"), input);
+    this.gl.uniform1f(this.gl.getUniformLocation(this.program, "uOutputVolume"), output);
   }
 
   private updateColor(name: string, hex: string) {
@@ -165,22 +156,10 @@ export class Orb {
     }
 
     this.gl.useProgram(this.program);
-    this.gl.uniform1i(
-      this.gl.getUniformLocation(this.program, "uPerlinTexture"),
-      0
-    );
-    this.gl.uniform1fv(
-      this.gl.getUniformLocation(this.program, "uOffsets"),
-      this.offsets
-    );
-    this.gl.uniform3fv(
-      this.gl.getUniformLocation(this.program, "uColor1"),
-      this.colorA
-    );
-    this.gl.uniform3fv(
-      this.gl.getUniformLocation(this.program, "uColor2"),
-      this.colorB
-    );
+    this.gl.uniform1i(this.gl.getUniformLocation(this.program, "uPerlinTexture"), 0);
+    this.gl.uniform1fv(this.gl.getUniformLocation(this.program, "uOffsets"), this.offsets);
+    this.gl.uniform3fv(this.gl.getUniformLocation(this.program, "uColor1"), this.colorA);
+    this.gl.uniform3fv(this.gl.getUniformLocation(this.program, "uColor2"), this.colorB);
 
     return this.program;
   }

@@ -158,14 +158,14 @@ function useConversationSetup() {
         conversationTextOnly.value = processedConfig.textOnly ?? false;
         transcript.value = initialMessage
           ? [
-              {
-                type: "message",
-                role: "user",
-                message: initialMessage,
-                isText: true,
-                conversationIndex: conversationIndex.peek(),
-              },
-            ]
+            {
+              type: "message",
+              role: "user",
+              message: initialMessage,
+              isText: true,
+              conversationIndex: conversationIndex.peek(),
+            },
+          ]
           : [];
 
         try {
@@ -209,15 +209,15 @@ function useConversationSetup() {
                 ...transcript.value,
                 details.reason === "error"
                   ? {
-                      type: "error",
-                      message: details.message,
-                      conversationIndex: conversationIndex.peek(),
-                    }
+                    type: "error",
+                    message: details.message,
+                    conversationIndex: conversationIndex.peek(),
+                  }
                   : {
-                      type: "disconnection",
-                      role: details.reason === "user" ? "user" : "ai",
-                      conversationIndex: conversationIndex.peek(),
-                    },
+                    type: "disconnection",
+                    role: details.reason === "user" ? "user" : "ai",
+                    conversationIndex: conversationIndex.peek(),
+                  },
               ];
               conversationIndex.value++;
               if (details.reason === "error") {

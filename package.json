@@ -13,8 +13,16 @@
     "lint:ts": "tsc --noEmit --skipLibCheck",
     "lint:es": "npx eslint .",
     "lint:prettier": "prettier 'src/**/*.ts' --check",
+    "prepare": "husky",
     "prepublishOnly": "npm run build",
-    "test": "vitest"
+    "lint:fix": "npm run lint:ts && npm run lint:es && npm run lint:prettier -- --write",
+    "test": "vitest",
+    "npm:view": "npm view @askbenny/convai-widget-embed",
+    "publish": "npm version patch && npm publish",
+    "version:patch": "npm version patch",
+    "version:minor": "npm version minor",
+    "version:major": "npm version major",
+    "version:prerelease": "npm version prerelease --preid=beta"
   },
   "files": [
     "dist"
@@ -27,11 +35,15 @@
     "@radix-ui/react-select": "^2.2.2",
     "@radix-ui/react-slot": "^1.2.0",
     "@types/preact-custom-element": "^4.0.4",
+    "@typescript-eslint/eslint-plugin": "^8.45.0",
+    "@typescript-eslint/parser": "^8.45.0",
     "@vitest/browser": "^3.1.2",
     "autoprefixer": "^10.4.21",
     "eslint": "^9.8.0",
+    "husky": "^9.1.7",
     "msw": "^2.7.5",
     "playwright": "^1.46.1",
+    "prettier": "^3.6.2",
     "tailwindcss": "^3.4.17",
     "typescript": "^5.5.4",
     "vite": "^6.3.2",

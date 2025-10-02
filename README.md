@@ -142,6 +142,49 @@ src/
 7. Push to the branch: `git push origin feature/new-feature`
 8. Submit a pull request
 
+## CI/CD
+
+### Automated NPM Releases
+
+This project is configured to automatically publish to npm when code is merged to the main branch.
+
+#### Setup NPM Token
+
+To enable automated publishing, you need to set up the `NPM_TOKEN` secret in your GitHub repository:
+
+1. Generate an npm access token:
+   - Log in to [npmjs.com](https://www.npmjs.com/)
+   - Go to your account settings → Access Tokens
+   - Click "Generate New Token"
+   - Choose "Classic Token" with "Automation" type
+   - Copy the generated token
+
+2. Add the token to GitHub:
+   - Go to your repository on GitHub
+   - Navigate to Settings → Secrets and variables → Actions
+   - Click "New repository secret"
+   - Name: `NPM_TOKEN`
+   - Value: Paste your npm token
+   - Click "Add secret"
+
+#### How It Works
+
+1. When code is merged to `main`, the workflow automatically:
+   - Runs tests and linting
+   - Checks if the current version is already published
+   - Increments the patch version (e.g., 0.0.15 → 0.0.16)
+   - Builds the project
+   - Publishes to npm
+   - Creates a git tag and GitHub release
+   - Commits the version change with `[skip ci]` to avoid loops
+
+2. To skip the automated release, include `[skip ci]` in your commit message.
+
+3. For manual version control:
+   - Minor version: `pnpm version:minor`
+   - Major version: `pnpm version:major`
+   - Pre-release: `pnpm version:prerelease`
+
 ## License
 
 MIT © ElevenLabs
