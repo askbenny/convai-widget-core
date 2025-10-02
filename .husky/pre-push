@@ -1,0 +1,16 @@
+#!/bin/sh
+. "$(dirname "$0")/_/husky.sh"
+
+# Check if we're pushing to main
+current_branch=$(git rev-parse --abbrev-ref HEAD)
+if [ "$current_branch" = "main" ]; then
+  echo "🚀 Pushing to main branch"
+  echo "📦 Current version: $(node -p "require('./package.json').version")"
+  echo ""
+  echo "ℹ️  Remember: Version will be auto-bumped by CI if needed"
+  echo "   For manual version bump before push, use:"
+  echo "   - pnpm run version:patch (bug fixes)"
+  echo "   - pnpm run version:minor (new features)"
+  echo "   - pnpm run version:major (breaking changes)"
+  echo ""
+fi
