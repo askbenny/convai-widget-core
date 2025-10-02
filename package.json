@@ -1,6 +1,6 @@
 {
   "name": "@askbenny/convai-widget-core",
-  "version": "0.0.15",
+  "version": "1.0.16",
   "description": "The common library for the Conversational AI Widget Wrapper for elevenlabs",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -22,10 +22,7 @@
     "version:patch": "npm version patch",
     "version:minor": "npm version minor",
     "version:major": "npm version major",
-    "version:prerelease": "npm version prerelease --preid=beta",
-    "release:patch": "npm version patch && git push && git push --tags",
-    "release:minor": "npm version minor && git push && git push --tags",
-    "release:major": "npm version major && git push && git push --tags"
+    "version:prerelease": "npm version prerelease --preid=beta"
   },
   "files": [
     "dist"
