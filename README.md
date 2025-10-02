@@ -148,9 +148,15 @@ src/
 
 This project is configured to automatically publish to npm when code is merged to the main branch.
 
-#### Setup NPM Token
+### GitHub Secrets Configuration
 
-To enable automated publishing, you need to set up the `NPM_TOKEN` secret in your GitHub repository:
+The automated release workflow requires the following GitHub secrets:
+
+#### 1. NPM_TOKEN (Required)
+
+Used for publishing packages to npm registry.
+
+**Setup Instructions:**
 
 1. Generate an npm access token:
    - Log in to [npmjs.com](https://www.npmjs.com/)
@@ -166,6 +172,17 @@ To enable automated publishing, you need to set up the `NPM_TOKEN` secret in you
    - Name: `NPM_TOKEN`
    - Value: Paste your npm token
    - Click "Add secret"
+
+#### 2. GITHUB_TOKEN (Automatic)
+
+This token is automatically provided by GitHub Actions and doesn't need manual configuration. It's used for:
+- Git operations (pushing version tags)
+- Creating GitHub releases
+- Accessing repository content
+
+**Permissions:** The workflow requires these permissions (already configured in `.github/workflows/npm-publish.yml`):
+- `contents: write` - For pushing commits and creating releases
+- `packages: write` - For publishing packages
 
 #### How It Works
 
