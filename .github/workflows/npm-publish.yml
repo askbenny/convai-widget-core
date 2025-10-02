@@ -90,6 +90,14 @@ jobs:
           echo "new_version=$(node -p "require('./package.json').version")" >> $GITHUB_OUTPUT
         id: bump_version
 
+      - name: Debug Environment Variables
+        if: steps.check_npm.outputs.exists == 'false'
+        run: |
+          echo "Checking if secrets are available..."
+          echo "VITE_SERVER_URL: ${{ secrets.VITE_SERVER_URL != '' && 'SET' || 'NOT SET' }}"
+          echo "VITE_SERVER_URL_US: ${{ secrets.VITE_SERVER_URL_US != '' && 'SET' || 'NOT SET' }}"
+          echo "Number of VITE_ secrets that are set: $(env | grep -c '^VITE_' || echo 0)"
+
       - name: Build
         if: steps.check_npm.outputs.exists == 'false'
         env:

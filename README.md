@@ -184,6 +184,34 @@ This token is automatically provided by GitHub Actions and doesn't need manual c
 - `contents: write` - For pushing commits and creating releases
 - `packages: write` - For publishing packages
 
+#### 3. Build Environment Variables (Required)
+
+The build process requires several environment variables for server endpoints. Add these as GitHub secrets:
+
+**Server URLs:**
+- `VITE_SERVER_URL` - Default server URL
+- `VITE_SERVER_URL_US` - US region server URL
+- `VITE_SERVER_URL_EU_RESIDENCY` - EU region server URL
+- `VITE_SERVER_URL_IN_RESIDENCY` - India region server URL
+
+**WebSocket URLs:**
+- `VITE_WEBSOCKET_URL` - Default WebSocket URL
+- `VITE_WEBSOCKET_URL_US` - US region WebSocket URL
+- `VITE_WEBSOCKET_URL_EU_RESIDENCY` - EU region WebSocket URL
+- `VITE_WEBSOCKET_URL_IN_RESIDENCY` - India region WebSocket URL
+
+**Setup Instructions:**
+
+1. Go to your repository on GitHub
+2. Navigate to Settings → Secrets and variables → Actions
+3. For each variable above:
+   - Click "New repository secret"
+   - Name: Use the exact variable name (e.g., `VITE_SERVER_URL_US`)
+   - Value: Enter the appropriate URL for your environment
+   - Click "Add secret"
+
+**Note:** These variables must be prefixed with `VITE_` to be accessible in the Vite build process. The values should be the actual URLs for your ElevenLabs endpoints.
+
 #### How It Works
 
 1. When code is merged to `main`, the workflow automatically:

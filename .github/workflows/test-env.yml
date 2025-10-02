@@ -1,0 +1,38 @@
+name: Test Environment Variables
+
+on:
+    workflow_dispatch:
+
+jobs:
+    test-env:
+        runs-on: ubuntu-latest
+        steps:
+            - name: Checkout code
+              uses: actions/checkout@v4
+
+            - name: Test Secrets Availability
+              run: |
+                  echo "Testing if secrets are available..."
+                  echo "VITE_SERVER_URL is: ${{ secrets.VITE_SERVER_URL != '' && 'SET' || 'NOT SET' }}"
+                  echo "VITE_SERVER_URL_US is: ${{ secrets.VITE_SERVER_URL_US != '' && 'SET' || 'NOT SET' }}"
+                  echo "VITE_SERVER_URL_EU_RESIDENCY is: ${{ secrets.VITE_SERVER_URL_EU_RESIDENCY != '' && 'SET' || 'NOT SET' }}"
+                  echo "VITE_SERVER_URL_IN_RESIDENCY is: ${{ secrets.VITE_SERVER_URL_IN_RESIDENCY != '' && 'SET' || 'NOT SET' }}"
+                  echo "VITE_WEBSOCKET_URL is: ${{ secrets.VITE_WEBSOCKET_URL != '' && 'SET' || 'NOT SET' }}"
+                  echo "VITE_WEBSOCKET_URL_US is: ${{ secrets.VITE_WEBSOCKET_URL_US != '' && 'SET' || 'NOT SET' }}"
+                  echo "VITE_WEBSOCKET_URL_EU_RESIDENCY is: ${{ secrets.VITE_WEBSOCKET_URL_EU_RESIDENCY != '' && 'SET' || 'NOT SET' }}"
+                  echo "VITE_WEBSOCKET_URL_IN_RESIDENCY is: ${{ secrets.VITE_WEBSOCKET_URL_IN_RESIDENCY != '' && 'SET' || 'NOT SET' }}"
+                  echo "NPM_TOKEN is: ${{ secrets.NPM_TOKEN != '' && 'SET' || 'NOT SET' }}"
+
+            - name: Test Environment Variables in Build
+              env:
+                  VITE_SERVER_URL: ${{ secrets.VITE_SERVER_URL }}
+                  VITE_SERVER_URL_US: ${{ secrets.VITE_SERVER_URL_US }}
+                  VITE_SERVER_URL_EU_RESIDENCY: ${{ secrets.VITE_SERVER_URL_EU_RESIDENCY }}
+                  VITE_SERVER_URL_IN_RESIDENCY: ${{ secrets.VITE_SERVER_URL_IN_RESIDENCY }}
+                  VITE_WEBSOCKET_URL: ${{ secrets.VITE_WEBSOCKET_URL }}
+                  VITE_WEBSOCKET_URL_US: ${{ secrets.VITE_WEBSOCKET_URL_US }}
+                  VITE_WEBSOCKET_URL_EU_RESIDENCY: ${{ secrets.VITE_WEBSOCKET_URL_EU_RESIDENCY }}
+                  VITE_WEBSOCKET_URL_IN_RESIDENCY: ${{ secrets.VITE_WEBSOCKET_URL_IN_RESIDENCY }}
+              run: |
+                  echo "Testing environment variables..."
+                  env | grep VITE_ || echo "No VITE_ variables found in environment"
