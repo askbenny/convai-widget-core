@@ -9,8 +9,8 @@ importers:
   .:
     dependencies:
       '@elevenlabs/client':
-        specifier: ^0.4.0
-        version: 0.4.0(@types/dom-mediacapture-record@1.0.22)
+        specifier: ^0.7.1
+        version: 0.7.1(@types/dom-mediacapture-record@1.0.22)
       '@preact/signals':
         specifier: ^2.0.4
         version: 2.2.1(preact@10.26.9)
@@ -195,8 +195,11 @@ packages:
   '@bundled-es-modules/tough-cookie@0.1.6':
     resolution: {integrity: sha512-dvMHbL464C0zI+Yqxbz6kZ5TOEp7GLW+pry/RWndAR8MJQAXZ2rPmIs8tziTZjeIyhSNZgZbCePtfSbdWqStJw==}
 
-  '@elevenlabs/client@0.4.0':
-    resolution: {integrity: sha512-7TWVdiKt+x0rrcTP+YiEMMrQEi/if187wFAp0lALv/IlD4K4GnP+llM/VLioQqZeNtgd1cFImn9pHB890RtGkQ==}
+  '@elevenlabs/client@0.7.1':
+    resolution: {integrity: sha512-cYOEPjAi6+nooHx/+odoBbnEYyDNsZNzJeApT+D82tI2b0I9W5mrTqMZb12Tpvhn5cdzT6w8GVmLvs438vrOCw==}
+
+  '@elevenlabs/types@0.0.1':
+    resolution: {integrity: sha512-HyYCtp1nsNl+m5NsiQsZqhjik1L1N3L+IFDOcbcO4foSU8AtxgqZOxFAI33XmXco1Uhe0gSL+uWjt8Zu/CncIQ==}
 
   '@esbuild/aix-ppc64@0.25.8':
     resolution: {integrity: sha512-urAvrUedIqEiFR3FYSLTWQgLu5tb+m0qZw0NBEasUeo6wuqatkMDaRT+1uABiGXEu5vqgPd7FGE1BhsAIy9QVA==}
@@ -1571,8 +1574,8 @@ packages:
   lines-and-columns@1.2.4:
     resolution: {integrity: sha512-7ylylesZQ/PV29jhEDl3Ufjo6ZX7gCqJr5F7PKrqc93v7fzSymt1BpwEU8nAUXs8qzzvqhbjhK5QZg6Mt/HkBg==}
 
-  livekit-client@2.15.3:
-    resolution: {integrity: sha512-MAziO1DxQfLJx/oSAEUczZiqrkZ4/SZNXbNexA4Sna5cQZkCzEwZcKPjRcPVbzhjlhHmyjABzWW+yXtykVhFkg==}
+  livekit-client@2.15.7:
+    resolution: {integrity: sha512-19m8Q1cvRl5PslRawDUgWXeP8vL8584tX8kiZEJaPZo83U/L6VPS/O7pP06phfJaBWeeV8sAOVtEPlQiZEHtpg==}
     peerDependencies:
       '@types/dom-mediacapture-record': ^1
 
@@ -2435,11 +2438,14 @@ snapshots:
       '@types/tough-cookie': 4.0.5
       tough-cookie: 4.1.4
 
-  '@elevenlabs/client@0.4.0(@types/dom-mediacapture-record@1.0.22)':
+  '@elevenlabs/client@0.7.1(@types/dom-mediacapture-record@1.0.22)':
     dependencies:
-      livekit-client: 2.15.3(@types/dom-mediacapture-record@1.0.22)
+      '@elevenlabs/types': 0.0.1
+      livekit-client: 2.15.7(@types/dom-mediacapture-record@1.0.22)
     transitivePeerDependencies:
       - '@types/dom-mediacapture-record'
+
+  '@elevenlabs/types@0.0.1': {}
 
   '@esbuild/aix-ppc64@0.25.8':
     optional: true
@@ -3641,7 +3647,7 @@ snapshots:
 
   lines-and-columns@1.2.4: {}
 
-  livekit-client@2.15.3(@types/dom-mediacapture-record@1.0.22):
+  livekit-client@2.15.7(@types/dom-mediacapture-record@1.0.22):
     dependencies:
       '@livekit/mutex': 1.1.1
       '@livekit/protocol': 1.39.3
