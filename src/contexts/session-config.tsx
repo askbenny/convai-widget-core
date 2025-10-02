@@ -30,16 +30,13 @@ async function fetchSignedUrl(agentId: string): Promise<string | null> {
   }
 }
 
-const SessionConfigContext =
-  createContext<ReadonlySignal<SessionConfig> | null>(null);
+const SessionConfigContext = createContext<ReadonlySignal<SessionConfig> | null>(null);
 
 interface SessionConfigProviderProps {
   children: ComponentChildren;
 }
 
-export function SessionConfigProvider({
-  children,
-}: SessionConfigProviderProps) {
+export function SessionConfigProvider({ children }: SessionConfigProviderProps) {
   const { language } = useLanguageConfig();
   const overridePrompt = useAttribute("override-prompt");
   const overrideFirstMessage = useAttribute("override-first-message");
@@ -68,9 +65,7 @@ export function SessionConfigProvider({
       try {
         return JSON.parse(dynamicVariablesJSON.value) as DynamicVariables;
       } catch (e: any) {
-        console.error(
-          `[ConversationalAI] Cannot parse dynamic-variables: ${e?.message}`
-        );
+        console.error(`[ConversationalAI] Cannot parse dynamic-variables: ${e?.message}`);
       }
     }
 
@@ -86,14 +81,9 @@ export function SessionConfigProvider({
   const fetchedSignedUrl = useSignal<string | null>(null);
   const isLoadingSignedUrl = useSignal(false);
 
-  // Fetch signed URL when agentId is available but signedUrl is not
+  // Fetch signed URL when agentId is available but signedUrl is not.
   useEffect(() => {
-    if (
-      agentId.value &&
-      !signedUrl.value &&
-      !fetchedSignedUrl.value &&
-      !isLoadingSignedUrl.value
-    ) {
+    if (agentId.value && !signedUrl.value && !fetchedSignedUrl.value && !isLoadingSignedUrl.value) {
       isLoadingSignedUrl.value = true;
       fetchSignedUrl(agentId.value).then((url) => {
         fetchedSignedUrl.value = url;
@@ -142,9 +132,7 @@ export function SessionConfigProvider({
       };
     }
 
-    console.error(
-      "[ConversationalAI] Either agent-id or signed-url is required"
-    );
+    console.error("[ConversationalAI] Either agent-id or signed-url is required");
     return null;
   });
 
@@ -153,9 +141,7 @@ export function SessionConfigProvider({
   }
 
   return (
-    <SessionConfigContext.Provider
-      value={value as ReadonlySignal<SessionConfig>}
-    >
+    <SessionConfigContext.Provider value={value as ReadonlySignal<SessionConfig>}>
       {children}
     </SessionConfigContext.Provider>
   );
