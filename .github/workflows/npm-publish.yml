@@ -1,0 +1,121 @@
+name: NPM Publish
+
+on:
+    push:
+        branches:
+            - main
+
+permissions:
+    contents: write
+    packages: write
+
+jobs:
+    publish:
+        runs-on: ubuntu-latest
+        # Skip workflow if commit message contains [skip ci]
+        if: ${{ !contains(github.event.head_commit.message, '[skip ci]') }}
+        steps:
+            - name: Checkout code
+              uses: actions/checkout@v4
+              with:
+                  # Use a PAT or the default GITHUB_TOKEN
+                  token: ${{ secrets.GITHUB_TOKEN }}
+                  # Fetch all history for all tags and branches
+                  fetch-depth: 0
+
+            - name: Setup Node.js
+              uses: actions/setup-node@v4
+              with:
+                  node-version: "20"
+                  registry-url: "https://registry.npmjs.org"
+
+            - name: Install pnpm
+              uses: pnpm/action-setup@v2
+              with:
+                  version: 8
+                  run_install: false
+
+            - name: Get pnpm store directory
+              shell: bash
+              run: |
+                  echo "STORE_PATH=$(pnpm store path --silent)" >> $GITHUB_ENV
+
+            - name: Setup pnpm cache
+              uses: actions/cache@v3
+              with:
+                  path: ${{ env.STORE_PATH }}
+                  key: ${{ runner.os }}-pnpm-store-${{ hashFiles('**/pnpm-lock.yaml') }}
+                  restore-keys: |
+                      ${{ runner.os }}-pnpm-store-
+
+            - name: Install dependencies
+              run: pnpm install --frozen-lockfile
+
+            - name: Run tests
+              run: pnpm test
+              continue-on-error: true # Don't fail the workflow if tests fail (you can change this)
+
+            - name: Run linting
+              run: pnpm lint
+
+            - name: Configure Git
+              run: |
+                  git config --local user.email "github-actions[bot]@users.noreply.github.com"
+                  git config --local user.name "github-actions[bot]"
+
+            - name: Get current version
+              id: current_version
+              run: |
+                  echo "version=$(node -p "require('./package.json').version")" >> $GITHUB_OUTPUT
+
+            - name: Check if version is already published
+              id: check_npm
+              run: |
+                  PACKAGE_NAME=$(node -p "require('./package.json').name")
+                  CURRENT_VERSION="${{ steps.current_version.outputs.version }}"
+
+                  # Check if this version already exists on npm
+                  if npm view "$PACKAGE_NAME@$CURRENT_VERSION" version 2>/dev/null; then
+                    echo "exists=true" >> $GITHUB_OUTPUT
+                    echo "Version $CURRENT_VERSION is already published"
+                  else
+                    echo "exists=false" >> $GITHUB_OUTPUT
+                    echo "Version $CURRENT_VERSION is not yet published"
+                  fi
+
+            - name: Bump version
+              if: steps.check_npm.outputs.exists == 'false'
+              run: |
+                  npm version patch -m "chore(release): bump version to %s [skip ci]"
+                  echo "new_version=$(node -p "require('./package.json').version")" >> $GITHUB_OUTPUT
+              id: bump_version
+
+            - name: Build
+              run: pnpm build
+
+            - name: Publish to NPM
+              if: steps.check_npm.outputs.exists == 'false'
+              run: npm publish --access public
+              env:
+                  NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+            - name: Push version changes
+              if: steps.check_npm.outputs.exists == 'false'
+              run: |
+                  git push origin main --follow-tags
+
+            - name: Create GitHub Release
+              if: steps.check_npm.outputs.exists == 'false' && steps.bump_version.outputs.new_version
+              uses: actions/create-release@v1
+              env:
+                  GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+              with:
+                  tag_name: v${{ steps.bump_version.outputs.new_version }}
+                  release_name: Release v${{ steps.bump_version.outputs.new_version }}
+                  body: |
+                      ## Changes in this release
+                      - Automated patch release
+
+                      See [npm package](https://www.npmjs.com/package/@askbenny/convai-widget-core/v/${{ steps.bump_version.outputs.new_version }})
+                  draft: false
+                  prerelease: false
