@@ -1,3 +1,7 @@
+packages:
+  # This is a single package project, not a monorepo
+  - "."
+
 ignoredBuiltDependencies:
   - esbuild
   - msw
