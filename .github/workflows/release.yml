@@ -1,0 +1,15 @@
+name: Patch Bump and Release
+
+on:
+  workflow_dispatch:
+
+permissions:
+  actions: read # Required to trigger the dev deploy workflow
+  contents: write # Allow pushing tags
+  statuses: write # Grants permission to write commit statuses.
+
+jobs:
+  call-reusable-workflow:
+    uses: askbenny/workflows/.github/workflows/release.yml@main
+    with:
+      tag_prefix: "v" # Optional, default is 'v'

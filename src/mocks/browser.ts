@@ -56,9 +56,7 @@ export const Worker = setupWorker(
   ws
     .link(`${import.meta.env.VITE_WEBSOCKET_URL_US}/v1/convai/conversation`)
     .addEventListener("connection", async ({ client }) => {
-      const agentId = client.url.searchParams.get(
-        "agent_id"
-      ) as keyof typeof AGENTS;
+      const agentId = client.url.searchParams.get("agent_id") as keyof typeof AGENTS;
       const config = AGENTS[agentId];
       const conversationId = Math.random().toString(36).substring(7);
       client.send(
@@ -71,7 +69,7 @@ export const Worker = setupWorker(
           },
         })
       );
-      await new Promise(resolve => setTimeout(resolve, 0));
+      await new Promise((resolve) => setTimeout(resolve, 0));
       client.send(
         JSON.stringify({
           type: "agent_response",
@@ -87,7 +85,7 @@ export const Worker = setupWorker(
             },
           })
         );
-        await new Promise(resolve => setTimeout(resolve, 1000));
+        await new Promise((resolve) => setTimeout(resolve, 1000));
         client.close();
       } else {
         client.send(

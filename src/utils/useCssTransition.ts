@@ -16,18 +16,15 @@ export function useCSSTransition({ onStart, onEnd }: CSSTransitionOptions) {
 
   const transitioning = useSignal(false);
 
-  const handleTransitionStart = useCallback(
-    (e: TransitionEvent<HTMLElement>) => {
-      if (e.target === e.currentTarget) {
-        transitionProperties.current?.add(e.propertyName);
-        if (!transitioning.peek()) {
-          transitioning.value = true;
-          onStartRef.current?.();
-        }
+  const handleTransitionStart = useCallback((e: TransitionEvent<HTMLElement>) => {
+    if (e.target === e.currentTarget) {
+      transitionProperties.current?.add(e.propertyName);
+      if (!transitioning.peek()) {
+        transitioning.value = true;
+        onStartRef.current?.();
       }
-    },
-    []
-  );
+    }
+  }, []);
 
   const handleTransitionEnd = useCallback((e: TransitionEvent<HTMLElement>) => {
     if (e.target === e.currentTarget) {

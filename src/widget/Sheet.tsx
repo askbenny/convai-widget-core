@@ -65,8 +65,8 @@ export function Sheet({ open }: SheetProps) {
     return config.value.transcript_enabled
       ? transcript.value
       : transcript.value.filter(
-          entry => entry.type !== "message" || entry.isText
-        );
+        entry => entry.type !== "message" || entry.isText
+      );
   });
 
   const showTranscript =

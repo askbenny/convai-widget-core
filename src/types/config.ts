@@ -4,9 +4,7 @@ export const Variants = ["tiny", "compact", "full"] as const;
 export type Variant = (typeof Variants)[number];
 
 export function parseVariant(variant: string | undefined): Variant {
-  return Variants.includes(variant as Variant)
-    ? (variant as Variant)
-    : Variants[0];
+  return Variants.includes(variant as Variant) ? (variant as Variant) : Variants[0];
 }
 
 export const Placements = [
@@ -19,9 +17,7 @@ export const Placements = [
 ] as const;
 export type Placement = (typeof Placements)[number];
 export function parsePlacement(placement: string | undefined): Placement {
-  return Placements.includes(placement as Placement)
-    ? (placement as Placement)
-    : "bottom-right";
+  return Placements.includes(placement as Placement) ? (placement as Placement) : "bottom-right";
 }
 
 export type FeedbackMode = "none" | "during" | "end";
@@ -103,9 +99,7 @@ export const DefaultTextContents = {
   copy_id: "Copy ID",
 };
 
-export const TextKeys = Object.keys(
-  DefaultTextContents
-) as (keyof typeof DefaultTextContents)[];
+export const TextKeys = Object.keys(DefaultTextContents) as (keyof typeof DefaultTextContents)[];
 
 export type TextContents = typeof DefaultTextContents;
 
@@ -132,9 +126,7 @@ export const DefaultStyles = {
   dropdown_sheet_radius: "calc(var(--el-input-radius) + 6px)",
 };
 
-export const StyleKeys = Object.keys(
-  DefaultStyles
-) as (keyof typeof DefaultStyles)[];
+export const StyleKeys = Object.keys(DefaultStyles) as (keyof typeof DefaultStyles)[];
 
 export type Styles = typeof DefaultStyles;
 
@@ -146,9 +138,7 @@ export function parseLocation(location: string = "us"): Location {
     case "global":
       return location;
     default:
-      console.warn(
-        `[ConversationalAI] Invalid server-location: ${location}. Defaulting to "us"`
-      );
+      console.warn(`[ConversationalAI] Invalid server-location: ${location}. Defaulting to "us"`);
       return "us";
   }
 }
