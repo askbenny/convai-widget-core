@@ -1,3 +1,5 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
+/* eslint-disable no-console */
 import { SessionConfig } from "@elevenlabs/client";
 import { ReadonlySignal, useComputed, useSignal } from "@preact/signals";
 import { ComponentChildren } from "preact";
@@ -12,6 +14,22 @@ import { parseBoolAttribute } from "../types/attributes";
 import { useTextOnly } from "./widget-config";
 
 type DynamicVariables = Record<string, string | number | boolean>;
+
+interface AgentConfig {
+  agent?: {
+    prompt?: {
+      prompt?: string;
+    };
+    firstMessage?: string;
+    language?: string;
+  };
+  tts?: {
+    voiceId?: string;
+  };
+  conversation?: {
+    textOnly?: boolean;
+  };
+}
 
 // Add function to fetch signed URL
 async function fetchSignedUrl(agentId: string): Promise<string | null> {
@@ -30,6 +48,23 @@ async function fetchSignedUrl(agentId: string): Promise<string | null> {
   }
 }
 
+// Add function to fetch agent config
+async function fetchAgentConfig(agentId: string): Promise<AgentConfig | null> {
+  try {
+    const response = await fetch(
+      `https://api.askbenny.ca/elevenlabs/agents/config?agentId=${agentId}`
+    );
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`);
+    }
+    const data = await response.json();
+    return data.body || null;
+  } catch (error) {
+    console.error("[ConversationalAI] Failed to fetch agent config:", error);
+    return null;
+  }
+}
+
 const SessionConfigContext = createContext<ReadonlySignal<SessionConfig> | null>(null);
 
 interface SessionConfigProviderProps {
@@ -43,21 +78,52 @@ export function SessionConfigProvider({ children }: SessionConfigProviderProps) 
   const overrideVoiceId = useAttribute("override-voice-id");
   const overrideTextOnly = useAttribute("override-text-only");
   const userId = useAttribute("user-id");
-  const overrides = useComputed<SessionConfig["overrides"]>(() => ({
-    agent: {
-      prompt: {
-        prompt: overridePrompt.value,
+
+  // Add state for fetched agent config (moved here to be available for overrides)
+  const fetchedAgentConfig = useSignal<AgentConfig | null>(null);
+  const isLoadingAgentConfig = useSignal(false);
+
+  const overrides = useComputed<SessionConfig["overrides"]>(() => {
+    const baseOverrides: SessionConfig["overrides"] = {
+      agent: {
+        prompt: {
+          prompt: overridePrompt.value,
+        },
+        firstMessage: overrideFirstMessage.value,
+        language: language.value.languageCode,
       },
-      firstMessage: overrideFirstMessage.value,
-      language: language.value.languageCode,
-    },
-    tts: {
-      voiceId: overrideVoiceId.value,
-    },
-    conversation: {
-      textOnly: parseBoolAttribute(overrideTextOnly.value) ?? undefined,
-    },
-  }));
+      tts: {
+        voiceId: overrideVoiceId.value,
+      },
+      conversation: {
+        textOnly: parseBoolAttribute(overrideTextOnly.value) ?? undefined,
+      },
+    };
+
+    // If we have fetched agent config, merge it with overrides
+    if (fetchedAgentConfig.value) {
+      const config = fetchedAgentConfig.value;
+
+      // Apply fetched config as base, with attribute overrides taking precedence
+      return {
+        agent: {
+          prompt: {
+            prompt: overridePrompt.value || config.agent?.prompt?.prompt,
+          },
+          firstMessage: overrideFirstMessage.value || config.agent?.firstMessage,
+          language: language.value.languageCode || config.agent?.language,
+        },
+        tts: {
+          voiceId: overrideVoiceId.value || config.tts?.voiceId,
+        },
+        conversation: {
+          textOnly: parseBoolAttribute(overrideTextOnly.value) ?? config.conversation?.textOnly,
+        },
+      };
+    }
+
+    return baseOverrides;
+  });
 
   const dynamicVariablesJSON = useAttribute("dynamic-variables");
   const dynamicVariables = useComputed(() => {
@@ -92,6 +158,20 @@ export function SessionConfigProvider({ children }: SessionConfigProviderProps) 
     }
   }, [agentId.value, signedUrl.value]);
 
+  // Fetch agent config when agentId is available
+  useEffect(() => {
+    if (agentId.value && !fetchedAgentConfig.value && !isLoadingAgentConfig.value) {
+      isLoadingAgentConfig.value = true;
+      fetchAgentConfig(agentId.value).then((config) => {
+        if (config) {
+          console.log("[ConversationalAI] Successfully fetched agent config:", config);
+        }
+        fetchedAgentConfig.value = config;
+        isLoadingAgentConfig.value = false;
+      });
+    }
+  }, [agentId.value]);
+
   const value = useComputed<SessionConfig | null>(() => {
     const commonConfig = {
       dynamicVariables: dynamicVariables.value,
@@ -118,8 +198,8 @@ export function SessionConfigProvider({ children }: SessionConfigProviderProps) 
       };
     }
 
-    // If agentId is provided but still loading signed URL, return null to wait
-    if (agentId.value && isLoadingSignedUrl.value) {
+    // If agentId is provided but still loading signed URL or agent config, return null to wait
+    if (agentId.value && (isLoadingSignedUrl.value || isLoadingAgentConfig.value)) {
       return null;
     }
 
