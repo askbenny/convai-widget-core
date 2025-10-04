@@ -7,13 +7,14 @@
   "source": "./src/index.ts",
   "type": "module",
   "scripts": {
+    "generate-version": "printf \"// This file is auto-generated during build\\nexport const PACKAGE_VERSION = \\\"%s\\\";\\n\" \"$npm_package_version\" > src/version.ts",
+    "prebuild": "npm run generate-version",
     "build": "vite build && tsc --declaration --emitDeclarationOnly",
-    "dev": "vite",
-    "lint": "npm run lint:ts && npm run lint:es && npm run lint:prettier",
-    "lint:ts": "tsc --noEmit --skipLibCheck",
-    "lint:es": "npx eslint .",
+    "dev": "npm run generate-version && vite",
+    "lint": "npm run check-types && npm run lint:es && npm run lint:prettier",
+    "check-types": "tsc --noEmit --skipLibCheck",
+    "lint:es": "pnpm exec eslint .",
     "lint:prettier": "prettier 'src/**/*.ts' --check",
-    "prepare": "husky",
     "prepublishOnly": "npm run build",
     "lint:fix": "npm run lint:ts && npm run lint:es && npm run lint:prettier -- --write",
     "test": "vitest",
@@ -34,30 +35,28 @@
     "@radix-ui/react-select": "^2.2.2",
     "@radix-ui/react-slot": "^1.2.0",
     "@types/preact-custom-element": "^4.0.4",
-    "@typescript-eslint/eslint-plugin": "^8.45.0",
-    "@typescript-eslint/parser": "^8.45.0",
     "@vitest/browser": "^3.1.2",
-    "autoprefixer": "^10.4.21",
     "eslint": "^9.8.0",
-    "husky": "^9.1.7",
     "msw": "^2.7.5",
     "playwright": "^1.46.1",
-    "prettier": "^3.6.2",
     "tailwindcss": "^3.4.17",
     "typescript": "^5.5.4",
     "vite": "^6.3.2",
     "vitest": "^3.1.2"
   },
   "dependencies": {
-    "@elevenlabs/client": "^0.4.0",
+    "@elevenlabs/client": "^0.7.1",
     "@preact/signals": "^2.0.4",
     "clsx": "^2.1.1",
     "preact": "^10.26.5",
     "preact-custom-element": "^4.3.0"
   },
+  "publishConfig": {
+    "access": "public"
+  },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/askbenny/convai-widget-core.git",
+    "url": "git+https://github.com/elevenlabs/packages.git",
     "directory": "packages/convai-widget-core"
   }
 }

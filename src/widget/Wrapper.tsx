@@ -40,8 +40,8 @@ const HIDDEN_STYLE = {
 };
 
 export const Wrapper = memo(function Wrapper() {
-  const expanded = useSignal(false);
   const config = useWidgetConfig();
+  const expanded = useSignal(config.peek().default_expanded);
   const sawError = useSignal(false);
   const { error } = useConversation();
   const terms = useTerms();
@@ -66,6 +66,26 @@ export const Wrapper = memo(function Wrapper() {
     }
   });
 
+  // Listen for custom expansion events
+  useSignalEffect(() => {
+    const handleExpandEvent = (event: CustomEvent) => {
+      if (event.detail?.action === 'expand') {
+        expanded.value = true;
+      } else if (event.detail?.action === 'collapse') {
+        expanded.value = false;
+      } else if (event.detail?.action === 'toggle') {
+        expanded.value = !expanded.value;
+      }
+    };
+
+    // Listen for custom events on the document
+    document.addEventListener('elevenlabs-agent:expand', handleExpandEvent as EventListener);
+
+    return () => {
+      document.removeEventListener('elevenlabs-agent:expand', handleExpandEvent as EventListener);
+    };
+  });
+
   const state = useComputed(() => {
     if (!expandable.value && !!error.value && !sawError.value) {
       return "error";
@@ -84,8 +104,14 @@ export const Wrapper = memo(function Wrapper() {
     <>
       <InOutTransition initial={false} active={isConversation}>
         <Root className={className} style={HIDDEN_STYLE}>
-          {expandable.value && <Sheet open={expanded} />}
-          <Trigger expandable={expandable.value} expanded={expanded} />
+          {config.value.always_expanded ? (
+            <Sheet open />
+          ) : (
+            <>
+              {expandable.value && <Sheet open={expanded} />}
+              <Trigger expandable={expandable.value} expanded={expanded} />
+            </>
+          )}
         </Root>
       </InOutTransition>
       <InOutTransition initial={false} active={isTerms}>
