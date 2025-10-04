@@ -35,7 +35,10 @@ export const CustomAttributeList = [
   "transcript",
   "text-input",
   "text-contents",
+  "default-expanded",
+  "always-expanded",
   "user-id",
+  "use-rtc",
 ] as const;
 
 export type CustomAttributes = {

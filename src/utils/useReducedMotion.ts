@@ -1,7 +1,7 @@
 import { useEffect } from "preact/compat";
 import { useSignal } from "@preact/signals";
 
-const MediaQuery = window.matchMedia("(prefers-reduced-motion: reduce)");
+const MediaQuery = window.matchMedia(`(prefers-reduced-motion: reduce)`);
 
 export function useReducedMotion() {
   const reducedMotion = useSignal(MediaQuery.matches);

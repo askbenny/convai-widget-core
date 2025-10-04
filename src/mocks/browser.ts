@@ -15,6 +15,8 @@ const BASIC_CONFIG: WidgetConfig = {
   mic_muting_enabled: false,
   transcript_enabled: false,
   text_input_enabled: false,
+  default_expanded: false,
+  always_expanded: false,
   text_contents: {
     start_chat: "Start a call",
   },
@@ -24,6 +26,7 @@ const BASIC_CONFIG: WidgetConfig = {
   text_only: false,
   supports_text_only: true,
   first_message: "Agent response",
+  use_rtc: false,
 };
 
 export const AGENTS = {
@@ -31,6 +34,10 @@ export const AGENTS = {
   text_only: {
     ...BASIC_CONFIG,
     text_only: true,
+  },
+  webrtc: {
+    ...BASIC_CONFIG,
+    use_rtc: true,
   },
   fail: BASIC_CONFIG,
 } as const satisfies Record<string, WidgetConfig>;
@@ -41,7 +48,7 @@ function isValidAgentId(agentId: string): agentId is keyof typeof AGENTS {
 
 export const Worker = setupWorker(
   http.get<{ agentId: string }>(
-    `${import.meta.env.VITE_SERVER_URL_US || "https://api.elevenlabs.io"}/v1/convai/agents/:agentId/widget`,
+    `${import.meta.env.VITE_SERVER_URL_US}/v1/convai/agents/:agentId/widget`,
     ({ params }) => {
       if (isValidAgentId(params.agentId)) {
         return HttpResponse.json({
@@ -54,11 +61,11 @@ export const Worker = setupWorker(
     }
   ),
   ws
-    .link(
-      `${import.meta.env.VITE_WEBSOCKET_URL_US || "wss://api.elevenlabs.io"}/v1/convai/conversation`
-    )
+    .link(`${import.meta.env.VITE_WEBSOCKET_URL_US}/v1/convai/conversation`)
     .addEventListener("connection", async ({ client }) => {
-      const agentId = client.url.searchParams.get("agent_id") as keyof typeof AGENTS;
+      const agentId = client.url.searchParams.get(
+        "agent_id"
+      ) as keyof typeof AGENTS;
       const config = AGENTS[agentId];
       const conversationId = Math.random().toString(36).substring(7);
       client.send(
@@ -71,7 +78,7 @@ export const Worker = setupWorker(
           },
         })
       );
-      await new Promise((resolve) => setTimeout(resolve, 0));
+      await new Promise(resolve => setTimeout(resolve, 0));
       client.send(
         JSON.stringify({
           type: "agent_response",
@@ -87,7 +94,7 @@ export const Worker = setupWorker(
             },
           })
         );
-        await new Promise((resolve) => setTimeout(resolve, 1000));
+        await new Promise(resolve => setTimeout(resolve, 1000));
         client.close();
       } else {
         client.send(

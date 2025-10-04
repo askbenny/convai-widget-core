@@ -34,8 +34,8 @@ export function MicConfigProvider({ children }: MicConfigProviderProps) {
         isMutingEnabled.value
           ? isMuted.value
           : // The user will not be able to unmute themselves if the muting
-        // button is hidden so we always return false
-          false
+            // button is hidden so we always return false
+            false
       ),
       setIsMuted: (value: boolean) => {
         isMuted.value = value;

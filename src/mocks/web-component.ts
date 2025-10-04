@@ -8,7 +8,7 @@ const MOUNTED_COMPONENTS = new Set<HTMLElement>();
 export function setupWebComponent(
   attributes: CustomAttributes & { "agent-id": keyof typeof AGENTS }
 ) {
-  const element = document.createElement("askbenny-convai");
+  const element = document.createElement("elevenlabs-convai");
   // We override the default "fixed" position to avoid issues with playwright
   // considering the widget to be out of the viewport.
   element.style.position = "absolute";
@@ -23,7 +23,7 @@ beforeAll(() => {
   registerWidget();
 });
 afterEach(() => {
-  MOUNTED_COMPONENTS.forEach((element) => {
+  MOUNTED_COMPONENTS.forEach(element => {
     element.remove();
   });
   MOUNTED_COMPONENTS.clear();

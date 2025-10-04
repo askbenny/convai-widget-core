@@ -11,7 +11,7 @@ const TermsContext = createContext<{
   requestTerms: () => Promise<void>;
   dismissTerms: () => void;
   acceptTerms: () => void;
-    } | null>(null);
+} | null>(null);
 
 interface TermsProviderProps {
   children: ComponentChildren;

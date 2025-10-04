@@ -5,6 +5,7 @@ import {
   SessionConfig,
   Status,
 } from "@elevenlabs/client";
+import { PACKAGE_VERSION } from "../version";
 import { computed, signal, useSignalEffect } from "@preact/signals";
 import { ComponentChildren } from "preact";
 import { createContext, useMemo } from "preact/compat";
@@ -158,26 +159,35 @@ function useConversationSetup() {
         conversationTextOnly.value = processedConfig.textOnly ?? false;
         transcript.value = initialMessage
           ? [
-            {
-              type: "message",
-              role: "user",
-              message: initialMessage,
-              isText: true,
-              conversationIndex: conversationIndex.peek(),
-            },
-          ]
+              {
+                type: "message",
+                role: "user",
+                message: initialMessage,
+                isText: true,
+                conversationIndex: conversationIndex.peek(),
+              },
+            ]
           : [];
 
         try {
           lockRef.current = Conversation.startSession({
             ...processedConfig,
-            onModeChange: (props) => {
+            overrides: {
+              ...processedConfig.overrides,
+              client: {
+                ...processedConfig.overrides?.client,
+                source: processedConfig.overrides?.client?.source || "widget",
+                version:
+                  processedConfig.overrides?.client?.version || PACKAGE_VERSION,
+              },
+            },
+            onModeChange: props => {
               mode.value = props.mode;
             },
-            onStatusChange: (props) => {
+            onStatusChange: props => {
               status.value = props.status;
             },
-            onCanSendFeedbackChange: (props) => {
+            onCanSendFeedbackChange: props => {
               canSendFeedback.value = props.canSendFeedback;
             },
             onMessage: ({ source, message }) => {
@@ -203,21 +213,21 @@ function useConversationSetup() {
                 },
               ];
             },
-            onDisconnect: (details) => {
+            onDisconnect: details => {
               conversationTextOnly.value = null;
               transcript.value = [
                 ...transcript.value,
                 details.reason === "error"
                   ? {
-                    type: "error",
-                    message: details.message,
-                    conversationIndex: conversationIndex.peek(),
-                  }
+                      type: "error",
+                      message: details.message,
+                      conversationIndex: conversationIndex.peek(),
+                    }
                   : {
-                    type: "disconnection",
-                    role: details.reason === "user" ? "user" : "ai",
-                    conversationIndex: conversationIndex.peek(),
-                  },
+                      type: "disconnection",
+                      role: details.reason === "user" ? "user" : "ai",
+                      conversationIndex: conversationIndex.peek(),
+                    },
               ];
               conversationIndex.value++;
               if (details.reason === "error") {
@@ -301,7 +311,7 @@ function triggerCallEvent(
   config: SessionConfig
 ): SessionConfig {
   try {
-    const event = new CustomEvent("askbenny-convai:call", {
+    const event = new CustomEvent("elevenlabs-convai:call", {
       bubbles: true,
       composed: true,
       detail: { config },
