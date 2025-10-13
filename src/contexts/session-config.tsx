@@ -117,7 +117,7 @@ export function SessionConfigProvider({ children }: SessionConfigProviderProps) 
           voiceId: overrideVoiceId.value || config.tts?.voiceId,
         },
         conversation: {
-          textOnly: parseBoolAttribute(overrideTextOnly.value) ?? config.conversation?.textOnly,
+          textOnly: parseBoolAttribute(overrideTextOnly.value) ?? !!config.conversation?.textOnly,
         },
       };
     }
