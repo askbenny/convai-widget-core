@@ -165,9 +165,9 @@ export function SessionConfigProvider({ children }: SessionConfigProviderProps) 
     if (agentId.value && !fetchedAgentConfig.value && !isLoadingAgentConfig.value) {
       isLoadingAgentConfig.value = true;
       fetchAgentConfig(agentId.value).then((config) => {
-        if (config) {
-          console.log("[ConversationalAI] Successfully fetched agent config:", config);
-        }
+        // if (config) {
+        //   console.log("[ConversationalAI] Successfully fetched agent config:", config);
+        // }
         fetchedAgentConfig.value = config;
         isLoadingAgentConfig.value = false;
       });

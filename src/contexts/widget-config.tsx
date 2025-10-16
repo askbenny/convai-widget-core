@@ -1,9 +1,4 @@
-import {
-  ReadonlySignal,
-  useComputed,
-  useSignal,
-  useSignalEffect,
-} from "@preact/signals";
+import { ReadonlySignal, useComputed, useSignal, useSignalEffect } from "@preact/signals";
 import { ComponentChildren } from "preact";
 import { createContext } from "preact/compat";
 import { parsePlacement, parseVariant, WidgetConfig } from "../types/config";
@@ -15,9 +10,7 @@ import { parseBoolAttribute } from "../types/attributes";
 import { useLanguageConfig } from "./language-config";
 import { useConversation } from "./conversation";
 
-const WidgetConfigContext = createContext<ReadonlySignal<WidgetConfig> | null>(
-  null
-);
+const WidgetConfigContext = createContext<ReadonlySignal<WidgetConfig> | null>(null);
 
 interface WidgetConfigProviderProps {
   children: ComponentChildren;
@@ -25,7 +18,6 @@ interface WidgetConfigProviderProps {
 
 export function WidgetConfigProvider({ children }: WidgetConfigProviderProps) {
   const { serverUrl } = useServerLocation();
-  console.log("serverUrl", serverUrl);
   const agentId = useAttribute("agent-id");
   const overrideConfig = useAttribute("override-config");
   const fetchedConfig = useSignal<WidgetConfig | null>(null);
@@ -39,9 +31,7 @@ export function WidgetConfigProvider({ children }: WidgetConfigProviderProps) {
           return;
         }
       } catch (error: any) {
-        console.error(
-          `[ConversationalAI] Cannot parse override-config: ${error?.message}`
-        );
+        console.error(`[ConversationalAI] Cannot parse override-config: ${error?.message}`);
       }
     }
 
@@ -89,19 +79,14 @@ export function WidgetConfigProvider({ children }: WidgetConfigProviderProps) {
     const patchedTermsKey = termsKey.value ?? fetchedConfig.value.terms_key;
 
     const textOnly =
-      parseBoolAttribute(overrideTextOnly.value) ??
-      fetchedConfig.value.text_only ??
-      false;
+      parseBoolAttribute(overrideTextOnly.value) ?? fetchedConfig.value.text_only ?? false;
 
     const patchedMicMuting =
-      parseBoolAttribute(micMuting.value) ??
-      fetchedConfig.value.mic_muting_enabled;
+      parseBoolAttribute(micMuting.value) ?? fetchedConfig.value.mic_muting_enabled;
     const patchedTranscript =
-      parseBoolAttribute(transcript.value) ??
-      fetchedConfig.value.transcript_enabled;
+      parseBoolAttribute(transcript.value) ?? fetchedConfig.value.transcript_enabled;
     const patchedTextInput =
-      parseBoolAttribute(textInput.value) ??
-      fetchedConfig.value.text_input_enabled;
+      parseBoolAttribute(textInput.value) ?? fetchedConfig.value.text_input_enabled;
 
     return {
       ...fetchedConfig.value,
@@ -133,9 +118,7 @@ export function useTextOnly() {
   const override = useAttribute("override-text-only");
   const config = useWidgetConfig();
 
-  return useComputed(
-    () => parseBoolAttribute(override.value) ?? config.value.text_only ?? false
-  );
+  return useComputed(() => parseBoolAttribute(override.value) ?? config.value.text_only ?? false);
 }
 
 export function useIsConversationTextOnly() {
@@ -152,8 +135,7 @@ export function useFirstMessage() {
   return useComputed(
     () =>
       override.value ??
-      config.value.language_presets?.[language.value.languageCode]
-        ?.first_message ??
+      config.value.language_presets?.[language.value.languageCode]?.first_message ??
       config.value.first_message ??
       null
   );
@@ -164,12 +146,9 @@ async function fetchConfig(
   serverUrl: string,
   signal: AbortSignal
 ): Promise<WidgetConfig> {
-  const response = await fetch(
-    `${serverUrl}/v1/convai/agents/${agentId}/widget`,
-    {
-      signal,
-    }
-  );
+  const response = await fetch(`${serverUrl}/v1/convai/agents/${agentId}/widget`, {
+    signal,
+  });
   const data = await response.json();
   if (!data.widget_config) {
     throw new Error("Response does not contain widget_config");
