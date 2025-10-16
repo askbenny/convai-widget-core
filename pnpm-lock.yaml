@@ -44,7 +44,7 @@ importers:
         version: 8.45.0(eslint@9.31.0(jiti@1.21.7))(typescript@5.8.3)
       '@vitest/browser':
         specifier: ^3.1.2
-        version: 3.2.4(msw@2.10.4(typescript@5.8.3))(playwright@1.54.1)(vite@6.3.5(jiti@1.21.7)(yaml@2.8.0))(vitest@3.2.4)
+        version: 3.2.4(msw@2.10.4(typescript@5.8.3))(playwright@1.56.0)(vite@6.3.5(jiti@1.21.7)(yaml@2.8.0))(vitest@3.2.4)
       autoprefixer:
         specifier: ^10.4.21
         version: 10.4.21(postcss@8.5.6)
@@ -59,7 +59,7 @@ importers:
         version: 2.10.4(typescript@5.8.3)
       playwright:
         specifier: ^1.46.1
-        version: 1.54.1
+        version: 1.56.0
       prettier:
         specifier: ^3.6.2
         version: 3.6.2
@@ -1745,13 +1745,13 @@ packages:
     resolution: {integrity: sha512-TfySrs/5nm8fQJDcBDuUng3VOUKsd7S+zqvbOTiGXHfxX4wK31ard+hoNuvkicM/2YFzlpDgABOevKSsB4G/FA==}
     engines: {node: '>= 6'}
 
-  playwright-core@1.54.1:
-    resolution: {integrity: sha512-Nbjs2zjj0htNhzgiy5wu+3w09YetDx5pkrpI/kZotDlDUaYk0HVA5xrBVPdow4SAUIlhgKcJeJg4GRKW6xHusA==}
+  playwright-core@1.56.0:
+    resolution: {integrity: sha512-1SXl7pMfemAMSDn5rkPeZljxOCYAmQnYLBTExuh6E8USHXGSX3dx6lYZN/xPpTz1vimXmPA9CDnILvmJaB8aSQ==}
     engines: {node: '>=18'}
     hasBin: true
 
-  playwright@1.54.1:
-    resolution: {integrity: sha512-peWpSwIBmSLi6aW2auvrUtf2DqY16YYcCMO8rTVx486jKmDTJg7UAhyrraP98GB8BoPURZP8+nxO7TSd4cPr5g==}
+  playwright@1.56.0:
+    resolution: {integrity: sha512-X5Q1b8lOdWIE4KAoHpW3SE8HvUB+ZZsUoN64ZhjnN8dOb1UpujxBtENGiZFE+9F/yhzJwYa+ca3u43FeLbboHA==}
     engines: {node: '>=18'}
     hasBin: true
 
@@ -3080,7 +3080,7 @@ snapshots:
       '@typescript-eslint/types': 8.45.0
       eslint-visitor-keys: 4.2.1
 
-  '@vitest/browser@3.2.4(msw@2.10.4(typescript@5.8.3))(playwright@1.54.1)(vite@6.3.5(jiti@1.21.7)(yaml@2.8.0))(vitest@3.2.4)':
+  '@vitest/browser@3.2.4(msw@2.10.4(typescript@5.8.3))(playwright@1.56.0)(vite@6.3.5(jiti@1.21.7)(yaml@2.8.0))(vitest@3.2.4)':
     dependencies:
       '@testing-library/dom': 10.4.0
       '@testing-library/user-event': 14.6.1(@testing-library/dom@10.4.0)
@@ -3092,7 +3092,7 @@ snapshots:
       vitest: 3.2.4(@vitest/browser@3.2.4)(jiti@1.21.7)(msw@2.10.4(typescript@5.8.3))(yaml@2.8.0)
       ws: 8.18.3
     optionalDependencies:
-      playwright: 1.54.1
+      playwright: 1.56.0
     transitivePeerDependencies:
       - bufferutil
       - msw
@@ -3805,11 +3805,11 @@ snapshots:
 
   pirates@4.0.7: {}
 
-  playwright-core@1.54.1: {}
+  playwright-core@1.56.0: {}
 
-  playwright@1.54.1:
+  playwright@1.56.0:
     dependencies:
-      playwright-core: 1.54.1
+      playwright-core: 1.56.0
     optionalDependencies:
       fsevents: 2.3.2
 
@@ -4236,7 +4236,7 @@ snapshots:
       vite-node: 3.2.4(jiti@1.21.7)(yaml@2.8.0)
       why-is-node-running: 2.3.0
     optionalDependencies:
-      '@vitest/browser': 3.2.4(msw@2.10.4(typescript@5.8.3))(playwright@1.54.1)(vite@6.3.5(jiti@1.21.7)(yaml@2.8.0))(vitest@3.2.4)
+      '@vitest/browser': 3.2.4(msw@2.10.4(typescript@5.8.3))(playwright@1.56.0)(vite@6.3.5(jiti@1.21.7)(yaml@2.8.0))(vitest@3.2.4)
     transitivePeerDependencies:
       - jiti
       - less
