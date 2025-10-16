@@ -1,6 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 /* eslint-disable no-console */
-import { SessionConfig } from "@elevenlabs/client";
+import { Language, SessionConfig } from "@elevenlabs/client";
 import { ReadonlySignal, useComputed, useSignal } from "@preact/signals";
 import { ComponentChildren } from "preact";
 import { createContext } from "preact/compat";
@@ -21,7 +21,7 @@ interface AgentConfig {
       prompt?: string;
     };
     firstMessage?: string;
-    language?: string;
+    language?: Language;
   };
   tts?: {
     voiceId?: string;
@@ -108,16 +108,18 @@ export function SessionConfigProvider({ children }: SessionConfigProviderProps) 
       return {
         agent: {
           prompt: {
-            prompt: overridePrompt.value || config.agent?.prompt?.prompt,
+            prompt: config.agent?.prompt?.prompt || overridePrompt.value,
           },
-          firstMessage: overrideFirstMessage.value || config.agent?.firstMessage,
-          language: language.value.languageCode || config.agent?.language,
+          firstMessage: config.agent?.firstMessage || overrideFirstMessage.value,
+          language: config.agent?.language || language.value.languageCode,
         },
         tts: {
-          voiceId: overrideVoiceId.value || config.tts?.voiceId,
+          voiceId: config.tts?.voiceId || overrideVoiceId.value,
         },
         conversation: {
-          textOnly: parseBoolAttribute(overrideTextOnly.value) ?? !!config.conversation?.textOnly,
+          textOnly:
+            !!config.conversation?.textOnly ||
+            (parseBoolAttribute(overrideTextOnly.value) ?? undefined),
         },
       };
     }
