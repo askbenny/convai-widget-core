@@ -21,11 +21,10 @@ export default defineConfig({
       external: id =>
         id.startsWith("preact") ||
         id.startsWith("@preact") ||
-        id.startsWith("@elevenlabs") ||
-        id === "clsx",
+        id.startsWith("@elevenlabs")
     },
   },
-  plugins: [preact()],
+  plugins: [preact(), ...(process.env.ANALYZE ? [] : [])],
   test: {
     name: "ConvAI Widget Tests",
     browser: {

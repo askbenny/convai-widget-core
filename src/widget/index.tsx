@@ -11,30 +11,42 @@ import { AvatarConfigProvider } from "../contexts/avatar-config";
 import { TermsProvider } from "../contexts/terms";
 import { CustomAttributes } from "../types/attributes";
 import { Wrapper } from "./Wrapper";
+import { SheetContentProvider } from "../contexts/sheet-content";
+import { FeedbackProvider } from "../contexts/feedback";
+import { ShadowHostProvider } from "../contexts/shadow-host";
+import { ModePreferenceProvider } from "../contexts/mode-preference";
 
 export function ConvAIWidget(attributes: CustomAttributes) {
   return (
-    <AttributesProvider value={attributes}>
-      <ServerLocationProvider>
-        <WidgetConfigProvider>
-          <TermsProvider>
-            <LanguageConfigProvider>
-              <MicConfigProvider>
-                <SessionConfigProvider>
-                  <ConversationProvider>
-                    <TextContentsProvider>
-                      <AvatarConfigProvider>
-                        <Style />
-                        <Wrapper />
-                      </AvatarConfigProvider>
-                    </TextContentsProvider>
-                  </ConversationProvider>
-                </SessionConfigProvider>
-              </MicConfigProvider>
-            </LanguageConfigProvider>
-          </TermsProvider>
-        </WidgetConfigProvider>
-      </ServerLocationProvider>
-    </AttributesProvider>
+    <ShadowHostProvider>
+      <AttributesProvider value={attributes}>
+        <ServerLocationProvider>
+          <WidgetConfigProvider>
+            <ModePreferenceProvider>
+              <TermsProvider>
+                <LanguageConfigProvider>
+                  <MicConfigProvider>
+                    <SessionConfigProvider>
+                      <ConversationProvider>
+                        <TextContentsProvider>
+                          <AvatarConfigProvider>
+                            <SheetContentProvider>
+                              <FeedbackProvider>
+                                <Style />
+                                <Wrapper />
+                              </FeedbackProvider>
+                            </SheetContentProvider>
+                          </AvatarConfigProvider>
+                        </TextContentsProvider>
+                      </ConversationProvider>
+                    </SessionConfigProvider>
+                  </MicConfigProvider>
+                </LanguageConfigProvider>
+              </TermsProvider>
+            </ModePreferenceProvider>
+          </WidgetConfigProvider>
+        </ServerLocationProvider>
+      </AttributesProvider>
+    </ShadowHostProvider>
   );
 }

@@ -15,6 +15,7 @@ import { useSessionConfig } from "./session-config";
 import { useContextSafely } from "../utils/useContextSafely";
 import { useTerms } from "./terms";
 import { useFirstMessage, useWidgetConfig } from "./widget-config";
+import { useShadowHost } from "./shadow-host";
 
 type ConversationSetup = ReturnType<typeof useConversationSetup>;
 
@@ -26,23 +27,23 @@ interface ConversationProviderProps {
 
 export type TranscriptEntry =
   | {
-      type: "message";
-      role: Role;
-      message: string;
-      isText: boolean;
-      conversationIndex: number;
-    }
+    type: "message";
+    role: Role;
+    message: string;
+    isText: boolean;
+    conversationIndex: number;
+  }
   | {
-      type: "disconnection";
-      role: Role;
-      message?: undefined;
-      conversationIndex: number;
-    }
+    type: "disconnection";
+    role: Role;
+    message?: undefined;
+    conversationIndex: number;
+  }
   | {
-      type: "error";
-      message: string;
-      conversationIndex: number;
-    };
+    type: "error";
+    message: string;
+    conversationIndex: number;
+  };
 
 export function ConversationProvider({ children }: ConversationProviderProps) {
   const value = useConversationSetup();
@@ -77,6 +78,7 @@ export function useConversation() {
 function useConversationSetup() {
   const conversationRef = useRef<Conversation | null>(null);
   const lockRef = useRef<Promise<Conversation> | null>(null);
+  const shadowHost = useShadowHost();
 
   const widgetConfig = useWidgetConfig();
   const firstMessage = useFirstMessage();
@@ -147,7 +149,10 @@ function useConversationSetup() {
         }
 
         try {
-          processedConfig = triggerCallEvent(element, processedConfig);
+          processedConfig = triggerCallEvent(
+            shadowHost.value ?? element,
+            processedConfig
+          );
         } catch (error) {
           console.error(
             "[ConversationalAI] Error triggering call event:",
@@ -171,19 +176,19 @@ function useConversationSetup() {
         try {
           lockRef.current = Conversation.startSession({
             ...processedConfig,
-            onModeChange: (props) => {
+            onModeChange: props => {
               mode.value = props.mode;
             },
-            onStatusChange: (props) => {
+            onStatusChange: props => {
               status.value = props.status;
             },
-            onCanSendFeedbackChange: (props) => {
+            onCanSendFeedbackChange: props => {
               canSendFeedback.value = props.canSendFeedback;
             },
-            onMessage: ({ source, message }) => {
+            onMessage: ({ role, message }) => {
               if (
                 conversationTextOnly.peek() === true &&
-                source === "ai" &&
+                role === "agent" &&
                 message === firstMessage.peek()
               ) {
                 // Text mode is always started by the user sending a text message.
@@ -196,14 +201,14 @@ function useConversationSetup() {
                 ...transcript.value,
                 {
                   type: "message",
-                  role: source,
+                  role,
                   message,
                   isText: false,
                   conversationIndex: conversationIndex.peek(),
                 },
               ];
             },
-            onDisconnect: (details) => {
+            onDisconnect: details => {
               conversationTextOnly.value = null;
               transcript.value = [
                 ...transcript.value,
@@ -215,7 +220,7 @@ function useConversationSetup() {
                   }
                   : {
                     type: "disconnection",
-                    role: details.reason === "user" ? "user" : "ai",
+                    role: details.reason === "user" ? "user" : "agent",
                     conversationIndex: conversationIndex.peek(),
                   },
               ];

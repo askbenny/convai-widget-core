@@ -102,13 +102,9 @@ function Playground() {
         </label>
       </div>
       <div className="dev-host">
-        {console.log(
-          "import.meta.env.VITE_AGENT_ID",
-          import.meta.env.VITE_AGENT_ID
-        )}
         <ConvAIWidget
           agent-id={
-            import.meta.env.VITE_AGENT_ID || "agent_01jzjw7v9se08t0fv0wy9517tq"
+            import.meta.env.VITE_AGENT_ID || "7vQWhlRsnHIPKDbHpCAS"
           }
           variant={variant}
           placement={placement}

@@ -1,5 +1,3 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
-/* eslint-disable no-console */
 import { Language, SessionConfig } from "@elevenlabs/client";
 import { ReadonlySignal, useComputed, useSignal } from "@preact/signals";
 import { ComponentChildren } from "preact";
@@ -11,7 +9,7 @@ import { useEffect } from "preact/hooks";
 
 import { useContextSafely } from "../utils/useContextSafely";
 import { parseBoolAttribute } from "../types/attributes";
-import { useTextOnly } from "./widget-config";
+import { useTextOnly, useWebRTC } from "./widget-config";
 
 type DynamicVariables = Record<string, string | number | boolean>;
 
@@ -144,6 +142,7 @@ export function SessionConfigProvider({ children }: SessionConfigProviderProps) 
   const agentId = useAttribute("agent-id");
   const signedUrl = useAttribute("signed-url");
   const textOnly = useTextOnly();
+  const useWebRTCEnabled = useWebRTC();
 
   // Add state for fetched signed URL
   const fetchedSignedUrl = useSignal<string | null>(null);
@@ -165,9 +164,6 @@ export function SessionConfigProvider({ children }: SessionConfigProviderProps) 
     if (agentId.value && !fetchedAgentConfig.value && !isLoadingAgentConfig.value) {
       isLoadingAgentConfig.value = true;
       fetchAgentConfig(agentId.value).then((config) => {
-        // if (config) {
-        //   console.log("[ConversationalAI] Successfully fetched agent config:", config);
-        // }
         fetchedAgentConfig.value = config;
         isLoadingAgentConfig.value = false;
       });
@@ -175,6 +171,7 @@ export function SessionConfigProvider({ children }: SessionConfigProviderProps) 
   }, [agentId.value]);
 
   const value = useComputed<SessionConfig | null>(() => {
+    const _isWebRTC = useWebRTCEnabled.value; // Reserved for future WebRTC support
     const commonConfig = {
       dynamicVariables: dynamicVariables.value,
       overrides: overrides.value,

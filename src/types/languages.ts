@@ -7,7 +7,7 @@ export interface LanguageInfo {
 }
 
 export const Languages = {
-  en: { name: "English", flagCode: "us", languageCode: "en" },
+  en: { name: "English", flagCode: "ca", languageCode: "en" },
   zh: { name: "中文", flagCode: "cn", languageCode: "zh" },
   es: { name: "Español", flagCode: "es", languageCode: "es" },
   hi: { name: "हिन्दी", flagCode: "in", languageCode: "hi" },
@@ -43,13 +43,8 @@ export const Languages = {
   hu: { name: "Magyar", flagCode: "hu", languageCode: "hu" },
   no: { name: "Norsk", flagCode: "no", languageCode: "no" },
   vi: { name: "Tiếng Việt", flagCode: "vn", languageCode: "vi" },
-} as const satisfies {
-  [K in Language]: {
-    name: string;
-    flagCode: string;
-    languageCode: Language;
-  };
-};
+  tl: { name: "Tagalog", flagCode: "ph", languageCode: "tl" },
+} as const;
 
 export function isValidLanguage(value?: string): value is Language {
   return Object.keys(Languages).includes(value ?? "");
