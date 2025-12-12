@@ -1,21 +1,25 @@
 {
   "name": "@askbenny/convai-widget-core",
-  "version": "1.2.5",
+  "version": "1.2.6",
   "description": "The common library for the Conversational AI Widget Wrapper for elevenlabs",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "source": "./src/index.ts",
   "type": "module",
   "scripts": {
+    "generate-version": "printf \"// This file is auto-generated during build\\nexport const PACKAGE_VERSION = \\\"%s\\\";\\n\" \"$npm_package_version\" > src/version.ts",
+    "postinstall": "npm run generate-version",
+    "prebuild": "npm run generate-version",
     "build": "vite build && tsc --declaration --emitDeclarationOnly",
-    "dev": "vite",
+    "build:analyze": "ANALYZE=true vite build",
+    "dev": "npm run generate-version && vite",
     "lint": "npm run lint:ts && npm run lint:es && npm run lint:prettier",
     "lint:ts": "tsc --noEmit --skipLibCheck",
     "lint:es": "npx eslint .",
     "lint:prettier": "prettier 'src/**/*.ts' --check",
     "prepare": "husky",
     "prepublishOnly": "npm run build",
-    "lint:fix": "npm run lint:ts && npm run lint:es && npm run lint:prettier -- --write",
+    "lint:fix": "npm run lint:ts && npx eslint . --fix && prettier 'src/**/*.ts' --write",
     "test": "vitest",
     "npm:view": "npm view @askbenny/convai-widget-embed",
     "version:patch": "npm version patch",
@@ -45,7 +49,8 @@
     "prettier": "^3.6.2",
     "tailwindcss": "^3.4.17",
     "typescript": "^5.5.4",
-    "vite": "^6.3.2",
+    "vite": "^6.4.1",
+    "vite-bundle-analyzer": "^1.2.3",
     "vitest": "^3.1.2"
   },
   "dependencies": {
@@ -53,7 +58,8 @@
     "@preact/signals": "^2.0.4",
     "clsx": "^2.1.1",
     "preact": "^10.26.5",
-    "preact-custom-element": "^4.3.0"
+    "preact-custom-element": "^4.3.0",
+    "tailwind-merge": "^3.4.0"
   },
   "repository": {
     "type": "git",

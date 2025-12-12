@@ -1,4 +1,4 @@
-import { Signal, useComputed, useSignal } from "@preact/signals";
+import { useComputed, useSignal } from "@preact/signals";
 import {
   useFirstMessage,
   useIsConversationTextOnly,
@@ -12,13 +12,17 @@ import { Avatar } from "../components/Avatar";
 import { Button } from "../components/Button";
 import { StatusLabel } from "./StatusLabel";
 import { Placement } from "../types/config";
-import { SheetLanguageSelect } from "./SheetLanguageSelect";
-import { SheetActions } from "./SheetActions";
 import { Transcript } from "./Transcript";
+import { SheetActions } from "./SheetActions";
+import { FeedbackPage } from "./FeedbackPage";
+import { FeedbackActions } from "./FeedbackActions";
 import { useTextContents } from "../contexts/text-contents";
+import { Signalish } from "../utils/signalish";
+import { SheetHeader } from "./SheetHeader";
+import { useSheetContent } from "../contexts/sheet-content";
 
 interface SheetProps {
-  open: Signal<boolean>;
+  open: Signalish<boolean>;
 }
 
 const ORIGIN_CLASSES: Record<Placement, string> = {
@@ -39,6 +43,7 @@ export function Sheet({ open }: SheetProps) {
   const { isDisconnected, startSession, transcript, conversationIndex } =
     useConversation();
   const firstMessage = useFirstMessage();
+  const { currentContent, currentConfig } = useSheetContent();
 
   const filteredTranscript = useComputed<TranscriptEntry[]>(() => {
     if (textOnly.value || isConversationTextOnly.value) {
@@ -65,7 +70,7 @@ export function Sheet({ open }: SheetProps) {
     return config.value.transcript_enabled
       ? transcript.value
       : transcript.value.filter(
-        entry => entry.type !== "message" || entry.isText
+        (entry: TranscriptEntry) => entry.type !== "message" || entry.isText
       );
   });
 
@@ -73,6 +78,7 @@ export function Sheet({ open }: SheetProps) {
     filteredTranscript.value.length > 0 ||
     (!isDisconnected.value && config.value.transcript_enabled);
   const scrollPinned = useSignal(true);
+  const showAvatar = currentContent.value !== "feedback";
 
   return (
     <InOutTransition initial={false} active={open}>
@@ -81,55 +87,75 @@ export function Sheet({ open }: SheetProps) {
           "flex flex-col overflow-hidden absolute bg-base shadow-lg pointer-events-auto rounded-sheet w-full max-w-[400px] h-[calc(100%-80px)] max-h-[550px]",
           "transition-[transform,opacity] duration-200 data-hidden:scale-90 data-hidden:opacity-0",
           ORIGIN_CLASSES[placement],
-          placement.startsWith("top") ? "top-20" : "bottom-20"
+          placement.startsWith("top")
+            ? config.value.always_expanded
+              ? "top-0"
+              : "top-20"
+            : config.value.always_expanded
+              ? "bottom-0"
+              : "bottom-20"
         )}
       >
-        <div className="bg-base shrink-0 flex gap-2 p-4 items-start">
-          <div className="relative w-16 h-16" />
-          <InOutTransition active={showTranscript && !isDisconnected.value}>
-            <StatusLabel className="rounded-bl-[calc(var(--el-bubble-radius)/3)] transition-opacity data-hidden:opacity-0" />
-          </InOutTransition>
-        </div>
-        <Transcript
-          transcript={filteredTranscript}
-          scrollPinned={scrollPinned}
+        <SheetHeader
+          showBackButton={currentConfig.showHeaderBack}
+          onBackClick={currentConfig.onHeaderBack}
+          showStatusLabel={showTranscript && !isDisconnected.value}
+          showShadow={showTranscript}
+          showLanguageSelector={
+            currentContent.value !== "feedback" &&
+            (!showTranscript || isDisconnected.value)
+          }
         />
-        <SheetActions
-          scrollPinned={scrollPinned}
-          showTranscript={showTranscript}
-        />
-        <InOutTransition active={!showTranscript || isDisconnected.value}>
-          <div className="absolute top-0 left-0 right-0 p-4 flex justify-center transition-[opacity,transform] duration-200 data-hidden:opacity-0 data-hidden:-translate-y-4">
-            <SheetLanguageSelect />
+        <InOutTransition active={currentContent.value === "transcript"}>
+          <div className="grow flex flex-col min-h-0 transition-opacity duration-300 ease-out data-hidden:opacity-0">
+            <Transcript
+              transcript={filteredTranscript}
+              scrollPinned={scrollPinned}
+            />
+            <SheetActions
+              scrollPinned={scrollPinned}
+              showTranscript={showTranscript}
+            />
           </div>
         </InOutTransition>
-        <div
-          className={clsx(
-            "absolute origin-top-left transition-[transform,left,top] duration-200 z-1",
-            showTranscript
-              ? "top-4 left-4 scale-[0.333]"
-              : "top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 scale-100"
-          )}
-        >
-          <Avatar size="lg" />
-          <InOutTransition
-            active={!showTranscript && isDisconnected.value && !textOnly.value}
+        <InOutTransition active={currentContent.value === "feedback"}>
+          <div className="absolute inset-0 top-[88px] flex flex-col bg-base transition-transform duration-300 ease-out data-hidden:translate-x-full">
+            <FeedbackPage />
+            <FeedbackActions />
+          </div>
+        </InOutTransition>
+        <InOutTransition active={showAvatar}>
+          <div
+            className={clsx(
+              "absolute origin-top-left transition-[transform,left,top,opacity,scale] duration-200 z-1",
+              "data-hidden:opacity-0",
+              showTranscript
+                ? "top-4 left-4 scale-[0.1667]" // ~32px size
+                : "top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 scale-100"
+            )}
           >
-            <div className="absolute bottom-0 p-1 rounded-[calc(var(--el-button-radius)+4px)] bg-base left-1/2 -translate-x-1/2 translate-y-1/2 transition-[opacity,transform] data-hidden:opacity-0 data-hidden:scale-100 scale-150">
-              <Button
-                aria-label={text.start_call}
-                variant="primary"
-                icon="phone"
-                onClick={e => startSession(e.currentTarget)}
-              />
-            </div>
-          </InOutTransition>
-          <InOutTransition active={!showTranscript && !isDisconnected.value}>
-            <div className="absolute -bottom-3 left-1/2 -translate-x-1/2 translate-y-full transition-[opacity,transform] data-hidden:opacity-0 data-hidden:scale-75">
-              <StatusLabel />
-            </div>
-          </InOutTransition>
-        </div>
+            <Avatar size="lg" />
+            <InOutTransition
+              active={
+                !showTranscript && isDisconnected.value && !textOnly.value
+              }
+            >
+              <div className="absolute bottom-0 p-1 rounded-[calc(var(--el-button-radius)+4px)] bg-base left-1/2 -translate-x-1/2 translate-y-1/2 transition-[opacity,transform] data-hidden:opacity-0 data-hidden:scale-100 scale-150">
+                <Button
+                  aria-label={text.start_call}
+                  variant="primary"
+                  icon="phone"
+                  onClick={e => startSession(e.currentTarget)}
+                />
+              </div>
+            </InOutTransition>
+            <InOutTransition active={!showTranscript && !isDisconnected.value}>
+              <div className="absolute -bottom-3 left-1/2 -translate-x-1/2 translate-y-full transition-[opacity,transform] data-hidden:opacity-0 data-hidden:scale-75">
+                <StatusLabel />
+              </div>
+            </InOutTransition>
+          </div>
+        </InOutTransition>
       </div>
     </InOutTransition>
   );

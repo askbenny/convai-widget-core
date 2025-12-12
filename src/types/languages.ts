@@ -7,7 +7,7 @@ export interface LanguageInfo {
 }
 
 export const Languages = {
-  en: { name: "English", flagCode: "us", languageCode: "en" },
+  en: { name: "English", flagCode: "ca", languageCode: "en" },
   zh: { name: "中文", flagCode: "cn", languageCode: "zh" },
   es: { name: "Español", flagCode: "es", languageCode: "es" },
   hi: { name: "हिन्दी", flagCode: "in", languageCode: "hi" },

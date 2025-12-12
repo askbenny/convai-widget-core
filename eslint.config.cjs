@@ -88,6 +88,8 @@ module.exports = [
       "@typescript-eslint/explicit-function-return-type": "off",
       "@typescript-eslint/explicit-module-boundary-types": "off",
       "no-unused-vars": "off", // Turn off base rule for TS files
+      "@typescript-eslint/no-explicit-any": "off",
+      "no-console": "off",
     },
   },
   {

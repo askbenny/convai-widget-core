@@ -35,7 +35,14 @@ export const CustomAttributeList = [
   "transcript",
   "text-input",
   "text-contents",
+  "default-expanded",
+  "always-expanded",
   "user-id",
+  "use-rtc",
+  "collect-feedback",
+  "worklet-path-raw-audio-processor",
+  "worklet-path-audio-concat-processor",
+  "worklet-path-libsamplerate",
 ] as const;
 
 export type CustomAttributes = {

@@ -12,6 +12,7 @@ import { useTerms } from "../contexts/terms";
 import { TermsModal } from "./TermsModal";
 import { ErrorModal } from "./ErrorModal";
 import { PoweredBy } from "./PoweredBy";
+import { useShadowHost } from "../contexts/shadow-host";
 
 const HORIZONTAL = {
   left: "items-start",
@@ -40,14 +41,15 @@ const HIDDEN_STYLE = {
 };
 
 export const Wrapper = memo(function Wrapper() {
-  const expanded = useSignal(false);
   const config = useWidgetConfig();
+  const expanded = useSignal(config.peek().default_expanded);
   const sawError = useSignal(false);
   const { error } = useConversation();
   const terms = useTerms();
   const expandable = useComputed(
     () => config.value.transcript_enabled || config.value.text_input_enabled
   );
+  const shadowHost = useShadowHost();
   const className = useComputed(() =>
     clsx(
       "overlay !flex transition-opacity duration-200 data-hidden:opacity-0",
@@ -64,6 +66,37 @@ export const Wrapper = memo(function Wrapper() {
         sawError.value = false;
       }
     }
+  });
+
+  // Listen for custom expansion events
+  useSignalEffect(() => {
+    const handleExpandEvent = ((event: CustomEvent) => {
+      if (!event.detail || event.detail._convaiEventHandled) {
+        return;
+      }
+
+      event.detail._convaiEventHandled = true;
+      if (event.detail.action === "expand") {
+        expanded.value = true;
+      } else if (event.detail.action === "collapse") {
+        expanded.value = false;
+      } else if (event.detail.action === "toggle") {
+        expanded.value = !expanded.value;
+      }
+    }) as EventListener;
+
+    const host = shadowHost.value;
+    // Listen for custom events on the document
+    document.addEventListener("askbenny-agent:expand", handleExpandEvent);
+    host?.addEventListener("askbenny-agent:expand", handleExpandEvent);
+
+    return () => {
+      document.removeEventListener(
+        "askbenny-agent:expand",
+        handleExpandEvent
+      );
+      host?.removeEventListener("askbenny-agent:expand", handleExpandEvent);
+    };
   });
 
   const state = useComputed(() => {
@@ -84,8 +117,14 @@ export const Wrapper = memo(function Wrapper() {
     <>
       <InOutTransition initial={false} active={isConversation}>
         <Root className={className} style={HIDDEN_STYLE}>
-          {expandable.value && <Sheet open={expanded} />}
-          <Trigger expandable={expandable.value} expanded={expanded} />
+          {config.value.always_expanded ? (
+            <Sheet open />
+          ) : (
+            <>
+              {expandable.value && <Sheet open={expanded} />}
+              <Trigger expandable={expandable.value} expanded={expanded} />
+            </>
+          )}
         </Root>
       </InOutTransition>
       <InOutTransition initial={false} active={isTerms}>
