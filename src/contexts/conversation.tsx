@@ -185,10 +185,10 @@ function useConversationSetup() {
             onCanSendFeedbackChange: props => {
               canSendFeedback.value = props.canSendFeedback;
             },
-            onMessage: ({ source, message }) => {
+            onMessage: ({ role, message }) => {
               if (
                 conversationTextOnly.peek() === true &&
-                source === "ai" &&
+                role === "agent" &&
                 message === firstMessage.peek()
               ) {
                 // Text mode is always started by the user sending a text message.
@@ -201,7 +201,7 @@ function useConversationSetup() {
                 ...transcript.value,
                 {
                   type: "message",
-                  role: source,
+                  role,
                   message,
                   isText: false,
                   conversationIndex: conversationIndex.peek(),
@@ -220,7 +220,7 @@ function useConversationSetup() {
                   }
                   : {
                     type: "disconnection",
-                    role: details.reason === "user" ? "user" : "ai",
+                    role: details.reason === "user" ? "user" : "agent",
                     conversationIndex: conversationIndex.peek(),
                   },
               ];
