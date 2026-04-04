@@ -1,3 +1,4 @@
+import { postOverallFeedback } from "@elevenlabs/client";
 import { type Signal, useSignal, useSignalEffect } from "@preact/signals";
 import type { ComponentChildren } from "preact";
 import { createContext, useCallback, useMemo } from "preact/compat";
@@ -20,28 +21,6 @@ interface FeedbackStore {
 
 const FeedbackContext = createContext<FeedbackStore | null>(null);
 
-// Helper function to post overall feedback
-async function postOverallFeedback(
-  conversationId: string,
-  feedback: { rating: number; comment?: string },
-  serverUrl: string
-): Promise<void> {
-  const response = await fetch(
-    `${serverUrl}/v1/convai/conversations/${conversationId}/feedback/overall`,
-    {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify(feedback),
-    }
-  );
-
-  if (!response.ok) {
-    throw new Error(`Failed to submit feedback: ${response.statusText}`);
-  }
-}
-
 export function FeedbackProvider({
   children,
 }: {
@@ -57,11 +36,10 @@ export function FeedbackProvider({
 
   const submitRating = useCallback(async (ratingValue: number) => {
     const conversationId = lastId.value;
-    const currentAgentId = agentId.value;
 
-    if (!conversationId || !currentAgentId) {
+    if (!conversationId) {
       console.warn(
-        "[ConversationalAI] Cannot submit rating: missing agent_id or conversation_id"
+        "[ConversationalAI] Cannot submit rating: missing conversation_id"
       );
       return;
     }
@@ -83,11 +61,10 @@ export function FeedbackProvider({
 
   const submitFeedback = useCallback(async () => {
     const conversationId = lastId.value;
-    const currentAgentId = agentId.value;
 
-    if (!conversationId || !currentAgentId) {
+    if (!conversationId) {
       console.warn(
-        "[ConversationalAI] Cannot submit feedback: missing agent_id or conversation_id"
+        "[ConversationalAI] Cannot submit feedback: missing conversation_id"
       );
       return;
     }

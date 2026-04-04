@@ -76,7 +76,7 @@ class ProcessorCache {
           if (typeof pluginFn === "function") {
             let name = pluginNameCache.get(pluginFn);
             if (!name) {
-              name = pluginFn.name || "anonymous";
+              name = pluginFn.name;
               pluginNameCache.set(pluginFn, name);
             }
             result += name;
@@ -89,7 +89,7 @@ class ProcessorCache {
           // Plugin without options
           let name = pluginNameCache.get(plugin);
           if (!name) {
-            name = plugin.name || "anonymous";
+            name = plugin.name;
             pluginNameCache.set(plugin, name);
           }
           result += name;

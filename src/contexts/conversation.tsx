@@ -5,7 +5,6 @@ import {
   SessionConfig,
   Status,
 } from "@elevenlabs/client";
-import { PACKAGE_VERSION } from "../version";
 import { computed, signal, useSignalEffect } from "@preact/signals";
 import { ComponentChildren } from "preact";
 import { createContext, useMemo } from "preact/compat";
@@ -34,6 +33,21 @@ export type TranscriptEntry =
       role: Role;
       message: string;
       isText: boolean;
+      conversationIndex: number;
+      eventId?: number;
+    }
+  | {
+      type: "agent_tool_request";
+      toolName: string;
+      toolCallId: string;
+      eventId: number;
+      conversationIndex: number;
+    }
+  | {
+      type: "agent_tool_response";
+      toolCallId: string;
+      eventId: number;
+      isError: boolean;
       conversationIndex: number;
     }
   | {
@@ -168,28 +182,19 @@ function useConversationSetup() {
         conversationTextOnly.value = processedConfig.textOnly ?? false;
         transcript.value = initialMessage
           ? [
-            {
-              type: "message",
-              role: "user",
-              message: initialMessage,
-              isText: true,
-              conversationIndex: conversationIndex.peek(),
-            },
-          ]
+              {
+                type: "message",
+                role: "user",
+                message: initialMessage,
+                isText: true,
+                conversationIndex: conversationIndex.peek(),
+              },
+            ]
           : [];
 
         try {
           lockRef.current = Conversation.startSession({
             ...processedConfig,
-            overrides: {
-              ...processedConfig.overrides,
-              client: {
-                ...processedConfig.overrides?.client,
-                source: processedConfig.overrides?.client?.source || "widget",
-                version:
-                  processedConfig.overrides?.client?.version || PACKAGE_VERSION,
-              },
-            },
             onModeChange: props => {
               mode.value = props.mode;
             },
@@ -199,7 +204,7 @@ function useConversationSetup() {
             onCanSendFeedbackChange: props => {
               canSendFeedback.value = props.canSendFeedback;
             },
-            onMessage: ({ role, message }) => {
+            onMessage: ({ role, message, event_id }) => {
               if (
                 firstMessage.peek() &&
                 conversationTextOnly.peek() === true &&
@@ -226,6 +231,7 @@ function useConversationSetup() {
                     message,
                     isText: true,
                     conversationIndex: conversationIndex.peek(),
+                    eventId: event_id,
                   };
                   transcript.value = updatedTranscript;
                 }
@@ -241,10 +247,11 @@ function useConversationSetup() {
                   message,
                   isText: false,
                   conversationIndex: conversationIndex.peek(),
+                  eventId: event_id,
                 },
               ];
             },
-            onAgentChatResponsePart: ({ text, type }) => {
+            onAgentChatResponsePart: ({ text, type, event_id }) => {
               if (
                 firstMessage.peek() &&
                 conversationTextOnly.peek() === true &&
@@ -256,28 +263,31 @@ function useConversationSetup() {
                 return;
               }
 
-              const currentTranscript = transcript.peek();
               if (type === "start") {
                 isReceivingStreamRef.current = true;
+                const currentTranscript = transcript.peek();
                 streamingMessageIndexRef.current = currentTranscript.length;
-              } else if (type === "delta") {
-                const streamingIndex = streamingMessageIndexRef.current;
-                if (streamingIndex !== null && text) {
-                  const updatedTranscript = [...currentTranscript];
-                  const streamingMessage = (updatedTranscript[
-                    streamingIndex
-                  ] ??= {
+                transcript.value = [
+                  ...currentTranscript,
+                  {
                     type: "message",
                     role: "agent",
                     message: "",
                     isText: true,
                     conversationIndex: conversationIndex.peek(),
-                  });
-
-                  if (streamingMessage.type === "message") {
+                    eventId: event_id,
+                  },
+                ];
+              } else if (type === "delta") {
+                const streamingIndex = streamingMessageIndexRef.current;
+                if (streamingIndex !== null && text) {
+                  const currentTranscript = transcript.peek();
+                  const entry = currentTranscript[streamingIndex];
+                  if (entry.type === "message") {
+                    const updatedTranscript = [...currentTranscript];
                     updatedTranscript[streamingIndex] = {
-                      ...streamingMessage,
-                      message: streamingMessage.message + text,
+                      ...entry,
+                      message: entry.message + text,
                     };
                     transcript.value = updatedTranscript;
                   }
@@ -285,6 +295,30 @@ function useConversationSetup() {
               } else if (type === "stop") {
                 streamingMessageIndexRef.current = null;
               }
+            },
+            onAgentToolRequest: ({ tool_call_id, tool_name, event_id }) => {
+              transcript.value = [
+                ...transcript.peek(),
+                {
+                  type: "agent_tool_request",
+                  toolName: tool_name,
+                  toolCallId: tool_call_id,
+                  eventId: event_id,
+                  conversationIndex: conversationIndex.peek(),
+                },
+              ];
+            },
+            onAgentToolResponse: ({ tool_call_id, is_error, event_id }) => {
+              transcript.value = [
+                ...transcript.peek(),
+                {
+                  type: "agent_tool_response",
+                  toolCallId: tool_call_id,
+                  eventId: event_id,
+                  isError: is_error,
+                  conversationIndex: conversationIndex.peek(),
+                },
+              ];
             },
             onDisconnect: details => {
               receivedFirstMessageRef.current = false;
@@ -295,15 +329,15 @@ function useConversationSetup() {
                 ...transcript.peek(),
                 details.reason === "error"
                   ? {
-                    type: "error",
-                    message: details.message,
-                    conversationIndex: conversationIndex.peek(),
-                  }
+                      type: "error",
+                      message: details.message,
+                      conversationIndex: conversationIndex.peek(),
+                    }
                   : {
-                    type: "disconnection",
-                    role: details.reason === "user" ? "user" : "agent",
-                    conversationIndex: conversationIndex.peek(),
-                  },
+                      type: "disconnection",
+                      role: details.reason === "user" ? "user" : "agent",
+                      conversationIndex: conversationIndex.peek(),
+                    },
               ];
               conversationIndex.value++;
               if (details.reason === "error") {
@@ -404,7 +438,7 @@ function triggerCallEvent(
   config: SessionConfig
 ): SessionConfig {
   try {
-    const event = new CustomEvent("askbenny-convai:call", {
+    const event = new CustomEvent("elevenlabs-convai:call", {
       bubbles: true,
       composed: true,
       detail: { config },

@@ -1,8 +1,7 @@
 @import url(https://fonts.googleapis.com/css2?family=Inter:wght@400,500&display=swap);
 
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+@config "../../tailwind.config.js";
+@import "tailwindcss";
 
 .dev-host,
 :host {
@@ -89,6 +88,19 @@
     }
   }
 
+  @keyframes spin {
+    from {
+      transform: rotate(0deg);
+    }
+    to {
+      transform: rotate(360deg);
+    }
+  }
+
+  .animate-spin {
+    animation: spin 1s linear infinite;
+  }
+
   .terms h6 {
     @apply text-base-primary font-medium text-xs;
   }
@@ -109,7 +121,7 @@
     @apply text-base-primary font-medium text-xl;
   }
 
-  .terms h2 {
+  .terms h1 {
     @apply text-base-primary font-medium text-2xl;
   }
 }

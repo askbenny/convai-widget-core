@@ -1,0 +1,59 @@
+body {
+  margin: 0;
+}
+
+.playground {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100vw;
+  height: 100vh;
+  gap: 2rem;
+}
+
+.playground aside {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  width: 16rem;
+}
+
+.playground nav {
+  display: flex;
+  flex-direction: column;
+  color: blue;
+  gap: 1rem;
+  font-size: 14px;
+}
+
+.playground hr {
+  width: 100%;
+}
+
+.playground label {
+  display: flex;
+  flex-direction: column;
+  font-size: 14px;
+}
+
+.playground label:has(input[type="checkbox"]) {
+  flex-direction: row;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.playground label > div {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.playground input[type="text"],
+.playground select,
+.playground textarea {
+  margin-top: 0.25rem;
+}
+
+.playground button {
+  margin-top: 0.5rem;
+}
