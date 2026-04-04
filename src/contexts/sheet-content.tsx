@@ -8,21 +8,21 @@ import { useContextSafely } from "../utils/useContextSafely";
 type SheetContentType = "transcript" | "feedback";
 
 export interface PageConfig {
-    showHeaderBack: boolean;
-    onHeaderBack?: () => void;
+  showHeaderBack: boolean;
+  onHeaderBack?: () => void;
 }
 
 const SheetContentContext = createContext<{
-    currentContent: Signal<SheetContentType>;
-    currentConfig: PageConfig;
+  currentContent: Signal<SheetContentType>;
+  currentConfig: PageConfig;
 } | null>(null);
 
 export function SheetContentProvider({
   defaultContent = "transcript",
   children,
 }: {
-    defaultContent?: SheetContentType;
-    children: ComponentChildren;
+  defaultContent?: SheetContentType;
+  children: ComponentChildren;
 }) {
   const currentContent = useSignal<SheetContentType>(defaultContent);
 
@@ -30,16 +30,16 @@ export function SheetContentProvider({
     const contentType = currentContent.value;
 
     const currentConfig: PageConfig =
-            contentType === "feedback"
-              ? {
-                showHeaderBack: true,
-                onHeaderBack: () => {
-                  currentContent.value = "transcript";
-                },
-              }
-              : {
-                showHeaderBack: false,
-              };
+      contentType === "feedback"
+        ? {
+            showHeaderBack: true,
+            onHeaderBack: () => {
+              currentContent.value = "transcript";
+            },
+          }
+        : {
+            showHeaderBack: false,
+          };
 
     return { currentContent, currentConfig };
   }, [currentContent.value]);

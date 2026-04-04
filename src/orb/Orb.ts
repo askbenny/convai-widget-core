@@ -82,7 +82,7 @@ export class Orb {
         this.resizeObserver.observe(parent, {
           box: "device-pixel-content-box",
         });
-      } catch {
+      } catch (e) {
         this.resizeObserver.observe(parent);
       }
     }

@@ -80,7 +80,7 @@ type ImageComponentProps = DetailedHTMLProps<
   ExtraProps;
 
 export const ImageComponent = ({
-  node: _node,
+  node,
   className,
   src,
   alt,

@@ -1,29 +1,53 @@
 import { clsx } from "clsx";
 import { Feedback } from "../components/Feedback";
+import { Icon } from "../components/Icon";
 import { InOutTransition } from "../components/InOutTransition";
 import { useAvatarConfig } from "../contexts/avatar-config";
-import type { TranscriptEntry } from "../contexts/conversation";
 import { useConversation } from "../contexts/conversation";
+import {
+  ToolCallStatus,
+  type DisplayTranscriptEntry,
+  type ToolCallStatusType,
+} from "../utils/display-transcript";
 import { useTextContents } from "../contexts/text-contents";
-import { useMarkdownLinkConfig, useEndFeedbackType } from "../contexts/widget-config";
+import {
+  useMarkdownLinkConfig,
+  useEndFeedbackType,
+  useWidgetConfig,
+} from "../contexts/widget-config";
+import { stripAudioTags } from "../utils/stripAudioTags";
 import { WidgetStreamdown } from "../markdown";
 
 interface TranscriptMessageProps {
-  entry: TranscriptEntry;
+  entry: DisplayTranscriptEntry;
   animateIn: boolean;
 }
 
 function AgentMessageBubble({
   entry,
 }: {
-  entry: Extract<TranscriptEntry, { type: "message" }>;
+  entry: Extract<DisplayTranscriptEntry, { type: "message" }>;
 }) {
   const linkConfig = useMarkdownLinkConfig();
+  const config = useWidgetConfig();
+
+  const displayMessage =
+    config.value.strip_audio_tags && !entry.isText
+      ? stripAudioTags(entry.message)
+      : entry.message;
+
   return (
     <div className="pr-8">
-      <WidgetStreamdown linkConfig={linkConfig.value}>
-        {entry.message}
-      </WidgetStreamdown>
+      {displayMessage && (
+        <WidgetStreamdown linkConfig={linkConfig.value}>
+          {displayMessage}
+        </WidgetStreamdown>
+      )}
+      {entry.toolStatus && (
+        <div className={displayMessage ? "mt-2" : undefined}>
+          <ToolCallMessage status={entry.toolStatus} />
+        </div>
+      )}
     </div>
   );
 }
@@ -31,7 +55,7 @@ function AgentMessageBubble({
 function UserMessageBubble({
   entry,
 }: {
-  entry: Extract<TranscriptEntry, { type: "message" }>;
+  entry: Extract<DisplayTranscriptEntry, { type: "message" }>;
 }) {
   const { previewUrl } = useAvatarConfig();
 
@@ -54,7 +78,7 @@ function UserMessageBubble({
       <div
         dir="auto"
         className={clsx(
-          "px-3 py-2.5 rounded-bubble text-sm min-w-0 [overflow-wrap:break-word]",
+          "px-3 py-2.5 rounded-bubble text-sm min-w-0 wrap-break-word whitespace-pre-wrap",
           entry.role === "user"
             ? "bg-accent text-accent-primary"
             : "bg-base-active text-base-primary"
@@ -69,21 +93,22 @@ function UserMessageBubble({
 function DisconnectionMessage({
   entry,
 }: {
-  entry: Extract<TranscriptEntry, { type: "disconnection" }>;
+  entry: Extract<DisplayTranscriptEntry, { type: "disconnection" }>;
 }) {
   const text = useTextContents();
   const { lastId } = useConversation();
   const endFeedbackType = useEndFeedbackType();
+  const config = useWidgetConfig();
 
   return (
-    <div className="mt-3 px-8 flex flex-col">
+    <div className="px-8 flex flex-col">
       {endFeedbackType.value === "rating" && <Feedback />}
       <div className="text-xs text-base-subtle text-center transition-opacity duration-200 data-hidden:opacity-0">
         {entry.role === "user"
           ? text.user_ended_conversation
           : text.agent_ended_conversation}
         <br />
-        {lastId.value && (
+        {lastId.value && config.value.show_conversation_id && (
           <span className="break-all">
             {text.conversation_id}: {lastId.value}
           </span>
@@ -96,13 +121,13 @@ function DisconnectionMessage({
 function ErrorMessage({
   entry,
 }: {
-  entry: Extract<TranscriptEntry, { type: "error" }>;
+  entry: Extract<DisplayTranscriptEntry, { type: "error" }>;
 }) {
   const text = useTextContents();
   const { lastId } = useConversation();
 
   return (
-    <div className="mt-2 px-8 text-xs text-base-error text-center transition-opacity duration-200 data-hidden:opacity-0">
+    <div className="px-8 text-xs text-base-error text-center transition-opacity duration-200 data-hidden:opacity-0">
       {text.error_occurred}
       <br />
       {entry.message}
@@ -119,14 +144,14 @@ function ErrorMessage({
 }
 
 interface ModeToggleMessageProps {
-  entry: Extract<TranscriptEntry, { type: "mode_toggle" }>;
+  entry: Extract<DisplayTranscriptEntry, { type: "mode_toggle" }>;
 }
 
 function ModeToggleMessage({ entry }: ModeToggleMessageProps) {
   const text = useTextContents();
 
   return (
-    <div className="mt-2 px-8 text-xs text-base-subtle text-center transition-opacity duration-200 data-hidden:opacity-0">
+    <div className="px-8 text-xs text-base-subtle text-center transition-opacity duration-200 data-hidden:opacity-0">
       {entry.mode === "text"
         ? text.switched_to_text_mode
         : text.switched_to_voice_mode}
@@ -134,7 +159,42 @@ function ModeToggleMessage({ entry }: ModeToggleMessageProps) {
   );
 }
 
-function getMessageComponent(entry: TranscriptEntry, _isStreaming?: boolean) {
+function ToolCallMessage({ status }: { status: ToolCallStatusType }) {
+  const text = useTextContents();
+
+  return (
+    <div className="-my-4 first:mt-0 last:mb-0 flex items-center">
+      <div className="flex items-center h-7 px-2 gap-1 rounded-button border border-base-border bg-base">
+        {status === ToolCallStatus.LOADING && (
+          <>
+            <Icon name="loader" size="md" className="animate-spin shrink-0" />
+            <span className="text-xs leading-4">{text.agent_working}</span>
+          </>
+        )}
+        {status === ToolCallStatus.SUCCESS && (
+          <InOutTransition active={true} initial={false}>
+            <span className="flex items-center gap-1 transition-[opacity,transform] duration-200 data-hidden:opacity-0 data-hidden:scale-75">
+              <Icon name="check" size="sm" className="shrink-0" />
+              <span className="text-xs leading-4">{text.agent_done}</span>
+            </span>
+          </InOutTransition>
+        )}
+        {status === ToolCallStatus.ERROR && (
+          <InOutTransition active={true} initial={false}>
+            <span className="flex items-center gap-1 transition-[opacity,transform] duration-200 data-hidden:opacity-0 data-hidden:scale-75">
+              <Icon name="x" size="sm" className="shrink-0 text-base-error" />
+              <span className="text-xs text-base-error leading-4">
+                {text.agent_error}
+              </span>
+            </span>
+          </InOutTransition>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function getMessageComponent(entry: DisplayTranscriptEntry) {
   if (entry.type === "disconnection") {
     return <DisconnectionMessage entry={entry} />;
   }

@@ -7,15 +7,15 @@ import type { IconName } from "./Icon";
 import { Rating, RatingResult } from "./Rating";
 
 interface FeedbackProps {
-    icon?: IconName;
+  icon?: IconName;
 }
 
 function FeedbackRating({
   icon,
   onRate,
 }: {
-    icon: IconName;
-    onRate: (rating: number) => void;
+  icon: IconName;
+  onRate: (rating: number) => void;
 }) {
   const text = useTextContents();
 
@@ -41,10 +41,10 @@ function FeedbackResult({
   showFollowUpButton,
   onFollowUpClick,
 }: {
-    icon: IconName;
-    rating: number;
-    showFollowUpButton: boolean;
-    onFollowUpClick: () => void;
+  icon: IconName;
+  rating: number;
+  showFollowUpButton: boolean;
+  onFollowUpClick: () => void;
 }) {
   const text = useTextContents();
 
@@ -67,7 +67,7 @@ export function Feedback({ icon = "star" }: FeedbackProps) {
   const { currentContent } = useSheetContent();
   const { rating, feedbackProgress, submitRating } = useFeedback();
   const hasSubmittedRating =
-        feedbackProgress.value !== "initial" && rating.value !== null;
+    feedbackProgress.value !== "initial" && rating.value !== null;
   const handleFeedbackSubmit = useCallback(
     (ratingValue: number) => {
       submitRating(ratingValue);

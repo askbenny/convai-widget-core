@@ -73,7 +73,7 @@ export function useCopyTable({
   const timeoutRef = useRef(0);
   const { isAnimating } = useContext(StreamdownRuntimeContext);
 
-  const copyTableData = async (event: MouseEvent) => {
+  const copyTableData = async (event: React.MouseEvent<HTMLButtonElement>) => {
     if (typeof window === "undefined" || !navigator?.clipboard?.write) {
       onError?.(new Error("Clipboard API not available"));
       return;
@@ -82,8 +82,8 @@ export function useCopyTable({
     try {
       if (!isCopied.value) {
         // Find the closest table element
-        const button = event.currentTarget as HTMLButtonElement | null;
-        const tableWrapper = button?.closest(
+        const button = event.currentTarget;
+        const tableWrapper = button.closest(
           '[data-streamdown="table-wrapper"]'
         );
         const tableElement = tableWrapper?.querySelector(

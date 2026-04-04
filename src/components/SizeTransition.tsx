@@ -11,7 +11,8 @@ import { clsx } from "clsx";
 import { useCSSTransition } from "../utils/useCssTransition";
 import { useReducedMotion } from "../utils/useReducedMotion";
 
-interface SizeTransitionProps extends PropsWithoutRef<HTMLAttributes<HTMLSpanElement>> {
+interface SizeTransitionProps
+  extends PropsWithoutRef<HTMLAttributes<HTMLSpanElement>> {
   /**
    * Whether the children should be shown.
    *
@@ -42,11 +43,26 @@ export function SizeTransition(props: SizeTransitionProps) {
   return <Comp {...props} />;
 }
 
-function Reduced({ visible, className, grow, dep: _dep, ...rest }: SizeTransitionProps) {
-  return visible ? <div className={clsx(grow && "grow", className)} {...rest} /> : null;
+function Reduced({
+  visible,
+  className,
+  grow,
+  dep,
+  ...rest
+}: SizeTransitionProps) {
+  return visible ? (
+    <div className={clsx(grow && "grow", className)} {...rest} />
+  ) : null;
 }
 
-function Animated({ visible, children, className, grow, dep, ...rest }: SizeTransitionProps) {
+function Animated({
+  visible,
+  children,
+  className,
+  grow,
+  dep,
+  ...rest
+}: SizeTransitionProps) {
   const [retain, setRetain] = useState(visible);
   const [node, setNode] = useState<HTMLDivElement | null>(null);
   const [wrapper, setWrapper] = useState<HTMLSpanElement | null>(null);
@@ -95,8 +111,10 @@ function Animated({ visible, children, className, grow, dep, ...rest }: SizeTran
     const targetWidth = visible ? wrapper.offsetWidth : 0;
     const targetHeight = visible ? wrapper.offsetHeight : 0;
 
-    node.style.width = !visible || node.offsetWidth !== targetWidth ? `${targetWidth}px` : "";
-    node.style.height = !visible || node.offsetHeight !== targetHeight ? `${targetHeight}px` : "";
+    node.style.width =
+      !visible || node.offsetWidth !== targetWidth ? `${targetWidth}px` : "";
+    node.style.height =
+      !visible || node.offsetHeight !== targetHeight ? `${targetHeight}px` : "";
   }, [
     node,
     wrapper,

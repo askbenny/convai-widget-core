@@ -98,8 +98,12 @@ export function WidgetConfigProvider({ children }: WidgetConfigProviderProps) {
   const textInput = useAttribute("text-input");
   const defaultExpanded = useAttribute("default-expanded");
   const alwaysExpanded = useAttribute("always-expanded");
+  const dismissible = useAttribute("dismissible");
+  const stripAudioTags = useAttribute("strip-audio-tags");
   const overrideTextOnly = useAttribute("override-text-only");
   const useRtc = useAttribute("use-rtc");
+  const showAgentStatus = useAttribute("show-agent-status");
+  const showConversationId = useAttribute("show-conversation-id");
 
   const value = useComputed<WidgetConfig | null>(() => {
     if (!fetchedConfig.value) {
@@ -132,8 +136,24 @@ export function WidgetConfigProvider({ children }: WidgetConfigProviderProps) {
       parseBoolAttribute(defaultExpanded.value) ??
       fetchedConfig.value.default_expanded ??
       false;
+    const patchedDismissible =
+      parseBoolAttribute(dismissible.value) ??
+      fetchedConfig.value.dismissible ??
+      false;
+    const patchedStripAudioTags =
+      parseBoolAttribute(stripAudioTags.value) ??
+      fetchedConfig.value.strip_audio_tags ??
+      !textOnly;
     const patchedUseRtc =
       parseBoolAttribute(useRtc.value) ?? fetchedConfig.value.use_rtc ?? false;
+    const patchedShowAgentStatus =
+      parseBoolAttribute(showAgentStatus.value) ??
+      fetchedConfig.value.show_agent_status ??
+      false;
+    const patchedShowConversationId =
+      parseBoolAttribute(showConversationId.value) ??
+      fetchedConfig.value.show_conversation_id ??
+      true;
 
     return {
       ...fetchedConfig.value,
@@ -145,7 +165,11 @@ export function WidgetConfigProvider({ children }: WidgetConfigProviderProps) {
       text_input_enabled: textOnly || patchedTextInput,
       always_expanded: patchedAlwaysExpanded,
       default_expanded: patchedDefaultExpanded,
+      dismissible: patchedDismissible,
+      strip_audio_tags: patchedStripAudioTags,
       use_rtc: patchedUseRtc,
+      show_agent_status: patchedShowAgentStatus,
+      show_conversation_id: patchedShowConversationId,
     };
   });
 

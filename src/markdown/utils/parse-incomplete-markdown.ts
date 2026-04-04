@@ -37,8 +37,8 @@ const hasCompleteCodeBlock = (text: string): boolean => {
   return tripleBackticks > 0 && tripleBackticks % 2 === 0 && text.includes("\n");
 };
 
-const _linkImagePattern = /(!?\[)([^\]]*?)$/;
-const _incompleteLinkUrlPattern = /(!?)\[([^\]]+)\]\(([^)]+)$/;
+const linkImagePattern = /(!?\[)([^\]]*?)$/;
+const incompleteLinkUrlPattern = /(!?)\[([^\]]+)\]\(([^)]+)$/;
 
 // Helper function to find the matching opening bracket for a closing bracket
 // Handles nested brackets correctly by searching backwards

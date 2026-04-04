@@ -11,8 +11,8 @@ const RatingIcon = ({
   isFilled,
   iconName,
 }: {
-    isFilled: boolean;
-    iconName: IconName;
+  isFilled: boolean;
+  iconName: IconName;
 }) => {
   return (
     <span
@@ -35,13 +35,13 @@ const RatingButton = ({
   onKeyDown,
   iconName,
 }: {
-    value: number;
-    rating: Signal<number | null>;
-    hoverRating: Signal<number | null>;
-    onClick: (value: number) => void;
-    onHover: (value: number) => void;
-    onKeyDown: (e: KeyboardEvent, value: number) => void;
-    iconName: IconName;
+  value: number;
+  rating: Signal<number | null>;
+  hoverRating: Signal<number | null>;
+  onClick: (value: number) => void;
+  onHover: (value: number) => void;
+  onKeyDown: (e: KeyboardEvent, value: number) => void;
+  iconName: IconName;
 }) => {
   const isFilled = rating.value !== null && value <= rating.value;
   const isHovered = hoverRating.value !== null && value <= hoverRating.value;
@@ -62,7 +62,7 @@ const RatingButton = ({
   );
 
   return (
-  // biome-ignore lint/a11y/useSemanticElements: Custom rating control requires non-standard keyboard behavior
+    // biome-ignore lint/a11y/useSemanticElements: Custom rating control requires non-standard keyboard behavior
     <button
       type="button"
       role="radio"
@@ -88,11 +88,11 @@ export const Rating = ({
   ariaLabel,
   icon = "star",
 }: {
-    onRate: (rating: number) => void;
-    ariaLabel: Signalish<string>;
-    min?: number;
-    max?: number;
-    icon?: IconName;
+  onRate: (rating: number) => void;
+  ariaLabel: Signalish<string>;
+  min?: number;
+  max?: number;
+  icon?: IconName;
 }) => {
   const rating = useSignal<number | null>(null);
   const hoverRating = useSignal<number | null>(null);
@@ -177,10 +177,10 @@ export function RatingResult({
   max = 5,
   icon = "star",
 }: {
-    rating: number;
-    min?: number;
-    max?: number;
-    icon?: IconName;
+  rating: number;
+  min?: number;
+  max?: number;
+  icon?: IconName;
 }) {
   const values = generateRatingValues(min, max);
   return (

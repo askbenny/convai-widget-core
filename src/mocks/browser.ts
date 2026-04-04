@@ -11,10 +11,16 @@ const BASIC_CONFIG: WidgetConfig = {
     color_2: "#ffffff",
   },
   feedback_mode: "end",
+  end_feedback: {
+    type: "rating",
+  },
   language: "en",
   mic_muting_enabled: false,
   transcript_enabled: false,
   text_input_enabled: false,
+  default_expanded: false,
+  always_expanded: false,
+  dismissible: false,
   text_contents: {
     start_chat: "Start a call",
   },
@@ -24,8 +30,7 @@ const BASIC_CONFIG: WidgetConfig = {
   text_only: false,
   supports_text_only: true,
   first_message: "Agent response",
-  default_expanded: false,
-  always_expanded: false,
+  use_rtc: false,
 };
 
 export const AGENTS = {
@@ -34,75 +39,324 @@ export const AGENTS = {
     ...BASIC_CONFIG,
     text_only: true,
   },
+  webrtc: {
+    ...BASIC_CONFIG,
+    use_rtc: true,
+  },
   fail: BASIC_CONFIG,
+  end_call_test: {
+    ...BASIC_CONFIG,
+    text_only: true,
+    transcript_enabled: true,
+    text_input_enabled: true,
+    first_message: "",
+  },
+  localized: {
+    ...BASIC_CONFIG,
+    terms_html: "<p>Default Terms in English</p>",
+    terms_key: "terms_default",
+    supported_language_overrides: ["es", "fr"],
+    language_presets: {
+      es: {
+        text_contents: {
+          start_chat: "Iniciar una llamada",
+        },
+        first_message: "¡Hola! ¿Cómo puedo ayudarte?",
+        terms_html: "<p>Términos en Español</p>",
+        terms_key: "terms_es",
+      },
+      fr: {
+        text_contents: {
+          start_chat: "Commencer un appel",
+        },
+        first_message: "Bonjour! Comment puis-je vous aider?",
+        terms_html: "<p>Termes en Français</p>",
+        terms_key: "terms_fr",
+      },
+    },
+  },
+  markdown: {
+    ...BASIC_CONFIG,
+    text_only: true,
+    terms_html: undefined,
+    default_expanded: true,
+    markdown_link_allowed_hosts: [{ hostname: "*" }],
+    first_message: `# Heading 1
+
+This is **bold** and *italic* text.
+
+- List item 1
+- List item 2
+
+1. Ordered item 1
+2. Ordered item 2
+
+\`inline code\`
+
+\`\`\`javascript
+const codeBlock = true;
+\`\`\`
+
+[Link text](https://example.com)
+
+![Alt text](data:image/gif;base64,R0lGODlhAQABAIAAAP///wAAACwAAAAAAQABAAACAkQBADs=)
+
+> Blockquote text
+
+| Header 1 | Header 2 |
+| -------- | -------- |
+| Cell 1   | Cell 2   |
+
+---
+`,
+  },
+  markdown_no_links: {
+    ...BASIC_CONFIG,
+    text_only: true,
+    terms_html: undefined,
+    default_expanded: true,
+    markdown_link_allowed_hosts: [],
+    first_message: `No links should be clickable: [Link text](https://example.com/allowed)`,
+  },
+  markdown_domain_allowlist: {
+    ...BASIC_CONFIG,
+    text_only: true,
+    terms_html: undefined,
+    default_expanded: true,
+    markdown_link_allowed_hosts: [{ hostname: "example.com" }],
+    first_message: `[Allowed https link](https://example.com/allowed)
+
+[Allowed http link](http://example.com/http-allowed)
+
+[Blocked link](https://evil.com/blocked)
+`,
+  },
+  markdown_default_domain: {
+    ...BASIC_CONFIG,
+    text_only: true,
+    terms_html: undefined,
+    default_expanded: true,
+    first_message: `[Relative link](/relative)`,
+  },
+  tool_call: {
+    ...BASIC_CONFIG,
+    text_only: true,
+    transcript_enabled: true,
+    text_input_enabled: true,
+    show_agent_status: true,
+    terms_html: undefined,
+    default_expanded: true,
+    first_message: "",
+  },
+  audio_tags_strip: {
+    ...BASIC_CONFIG,
+    text_only: true,
+    default_expanded: true,
+    terms_html: undefined,
+    strip_audio_tags: true,
+    first_message: "[happy] Hello there! [excited] How can I help you today?",
+  },
+  audio_tags_no_strip: {
+    ...BASIC_CONFIG,
+    text_only: true,
+    default_expanded: true,
+    terms_html: undefined,
+    strip_audio_tags: false,
+    first_message: "[happy] Hello there! [excited] How can I help you today?",
+  },
 } as const satisfies Record<string, WidgetConfig>;
 
 function isValidAgentId(agentId: string): agentId is keyof typeof AGENTS {
   return agentId in AGENTS;
 }
 
-const serverUrl =
-  (import.meta as { env?: { VITE_SERVER_URL_US?: string } }).env?.VITE_SERVER_URL_US ||
-  "https://api.elevenlabs.io";
-const wsUrl =
-  (import.meta as { env?: { VITE_WEBSOCKET_URL_US?: string } }).env?.VITE_WEBSOCKET_URL_US ||
-  "wss://api.elevenlabs.io";
-
 export const Worker = setupWorker(
-  http.get<{ agentId: string }>(`${serverUrl}/v1/convai/agents/:agentId/widget`, ({ params }) => {
-    if (isValidAgentId(params.agentId)) {
-      return HttpResponse.json({
-        agent_id: params.agentId,
-        widget_config: AGENTS[params.agentId],
-      });
-    }
+  http.get<{ agentId: string }>(
+    `${import.meta.env.VITE_SERVER_URL_US}/v1/convai/agents/:agentId/widget`,
+    ({ params }) => {
+      if (isValidAgentId(params.agentId)) {
+        return HttpResponse.json({
+          agent_id: params.agentId,
+          widget_config: AGENTS[params.agentId],
+        });
+      }
 
-    return HttpResponse.error();
-  }),
-  ws.link(`${wsUrl}/v1/convai/conversation`).addEventListener("connection", async ({ client }) => {
-    const agentId = client.url.searchParams.get("agent_id") as keyof typeof AGENTS;
-    const config = AGENTS[agentId];
-    const conversationId = Math.random().toString(36).substring(7);
-    client.send(
-      JSON.stringify({
-        type: "conversation_initiation_metadata",
-        conversation_initiation_metadata_event: {
-          conversation_id: conversationId,
-          agent_output_audio_format: "pcm_16000",
-          user_input_audio_format: "pcm_16000",
-        },
-      })
-    );
-    await new Promise((resolve) => setTimeout(resolve, 0));
-    client.send(
-      JSON.stringify({
-        type: "agent_response",
-        agent_response_event: { agent_response: config.first_message },
-      })
-    );
-    if (config.text_only) {
+      return HttpResponse.error();
+    }
+  ),
+  ws
+    .link(`${import.meta.env.VITE_WEBSOCKET_URL_US}/v1/convai/conversation`)
+    .addEventListener("connection", async ({ client }) => {
+      const agentId = client.url.searchParams.get("agent_id") as keyof typeof AGENTS;
+      const config = AGENTS[agentId];
+      const conversationId = Math.random().toString(36).substring(7);
+      client.send(
+        JSON.stringify({
+          type: "conversation_initiation_metadata",
+          conversation_initiation_metadata_event: {
+            conversation_id: conversationId,
+            agent_output_audio_format: "pcm_16000",
+            user_input_audio_format: "pcm_16000",
+          },
+        })
+      );
+      await new Promise((resolve) => setTimeout(resolve, 0));
       client.send(
         JSON.stringify({
           type: "agent_response",
           agent_response_event: {
-            agent_response: "Another agent response",
+            agent_response: config.first_message,
+            event_id: 1,
           },
         })
       );
-      await new Promise((resolve) => setTimeout(resolve, 1000));
-      client.close();
-    } else {
-      client.send(
-        JSON.stringify({
-          type: "user_transcript",
-          user_transcription_event: { user_transcript: "User transcript" },
-        })
-      );
-    }
-    if (agentId === "fail") {
-      client.addEventListener("message", () => {
-        client.close(3000, "Test reason");
-      });
-    }
-  })
+      if (config.text_only && agentId !== "end_call_test" && agentId !== "tool_call") {
+        client.send(
+          JSON.stringify({
+            type: "agent_response",
+            agent_response_event: {
+              agent_response: "Another agent response",
+              event_id: 2,
+            },
+          })
+        );
+        await new Promise((resolve) => setTimeout(resolve, 1000));
+        client.close();
+      } else if (!config.text_only) {
+        client.send(
+          JSON.stringify({
+            type: "user_transcript",
+            user_transcription_event: {
+              user_transcript: "User transcript",
+              event_id: 3,
+            },
+          })
+        );
+      }
+      if (agentId === "fail") {
+        client.addEventListener("message", () => {
+          client.close(3000, "Test reason");
+        });
+      }
+      if (agentId === "end_call_test") {
+        client.addEventListener("message", async () => {
+          client.send(
+            JSON.stringify({
+              type: "agent_chat_response_part",
+              text_response_part: {
+                text: "",
+                type: "start",
+                event_id: 10,
+              },
+            })
+          );
+          await new Promise((resolve) => setTimeout(resolve, 50));
+          client.send(
+            JSON.stringify({
+              type: "agent_response",
+              agent_response_event: {
+                agent_response: "Goodbye! Have a great day!",
+                event_id: 10,
+              },
+            })
+          );
+          await new Promise((resolve) => setTimeout(resolve, 50));
+          client.send(
+            JSON.stringify({
+              type: "agent_chat_response_part",
+              text_response_part: {
+                text: "",
+                type: "stop",
+                event_id: 10,
+              },
+            })
+          );
+          await new Promise((resolve) => setTimeout(resolve, 50));
+          client.close(1000);
+        });
+      }
+      if (agentId === "tool_call") {
+        client.addEventListener("message", async () => {
+          // First message before tool execution (same event_id)
+          client.send(
+            JSON.stringify({
+              type: "agent_chat_response_part",
+              text_response_part: { text: "", type: "start", event_id: 2 },
+            })
+          );
+          await new Promise((resolve) => setTimeout(resolve, 0));
+          client.send(
+            JSON.stringify({
+              type: "agent_response",
+              agent_response_event: {
+                agent_response: "Running the tool now.",
+                event_id: 2,
+              },
+            })
+          );
+          client.send(
+            JSON.stringify({
+              type: "agent_tool_request",
+              agent_tool_request: {
+                tool_call_id: "tool_1",
+                event_id: 2,
+                tool_name: "test_tool",
+              },
+            })
+          );
+          client.send(
+            JSON.stringify({
+              type: "agent_chat_response_part",
+              text_response_part: { text: "", type: "stop", event_id: 2 },
+            })
+          );
+          await new Promise((resolve) => setTimeout(resolve, 100));
+          client.send(
+            JSON.stringify({
+              type: "agent_tool_response",
+              agent_tool_response: {
+                tool_call_id: "tool_1",
+                event_id: 2,
+                is_error: false,
+              },
+            })
+          );
+          await new Promise((resolve) => setTimeout(resolve, 50));
+          // Second message after tool execution (same event_id)
+          client.send(
+            JSON.stringify({
+              type: "agent_chat_response_part",
+              text_response_part: { text: "", type: "start", event_id: 2 },
+            })
+          );
+          await new Promise((resolve) => setTimeout(resolve, 0));
+          client.send(
+            JSON.stringify({
+              type: "agent_chat_response_part",
+              text_response_part: {
+                text: "Tool completed successfully",
+                type: "delta",
+                event_id: 2,
+              },
+            })
+          );
+          await new Promise((resolve) => setTimeout(resolve, 0));
+          client.send(
+            JSON.stringify({
+              type: "agent_chat_response_part",
+              text_response_part: { text: "", type: "stop", event_id: 2 },
+            })
+          );
+          client.send(
+            JSON.stringify({
+              type: "agent_response",
+              agent_response_event: {
+                agent_response: "Tool completed successfully",
+                event_id: 2,
+              },
+            })
+          );
+        });
+      }
+    })
 );

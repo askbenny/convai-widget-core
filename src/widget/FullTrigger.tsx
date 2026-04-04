@@ -7,15 +7,23 @@ import { InOutTransition } from "../components/InOutTransition";
 import { TriggerActions } from "./TriggerActions";
 import { StatusLabel } from "./StatusLabel";
 
+interface FullTriggerProps extends HTMLAttributes<HTMLDivElement> {
+  onDismiss?: () => void;
+}
+
 export function FullTrigger({
   className,
+  onDismiss,
   ...rest
-}: HTMLAttributes<HTMLDivElement>) {
+}: FullTriggerProps) {
   const { isDisconnected } = useConversation();
   const text = useTextContents();
 
   return (
-    <div className={clsx("flex flex-col p-2 rounded-sheet", className)} {...rest}>
+    <div
+      className={clsx("flex flex-col p-2 rounded-sheet", className)}
+      {...rest}
+    >
       <div className="flex items-center p-1 gap-2 min-w-60">
         <Avatar />
         <div className="relative text-sm max-w-64">
@@ -33,7 +41,7 @@ export function FullTrigger({
         </div>
       </div>
       <div className="flex items-center">
-        <TriggerActions />
+        <TriggerActions onDismiss={onDismiss} />
       </div>
     </div>
   );

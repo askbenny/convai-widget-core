@@ -8,7 +8,7 @@ const ShadowHostContext = createContext<Signal<HTMLElement | null> | null>(
 );
 
 interface ShadowHostProviderProps {
-    children: ComponentChildren;
+  children: ComponentChildren;
 }
 
 export function ShadowHostProvider({ children }: ShadowHostProviderProps) {

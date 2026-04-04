@@ -41,6 +41,8 @@ export const CustomAttributeList = [
   "text-contents",
   "default-expanded",
   "always-expanded",
+  "dismissible",
+  "strip-audio-tags",
   "user-id",
   "use-rtc",
   "collect-feedback",
@@ -51,6 +53,9 @@ export const CustomAttributeList = [
   "markdown-link-allowed-hosts",
   "markdown-link-include-www",
   "markdown-link-allow-http",
+  "show-agent-status",
+  "show-conversation-id",
+  "environment",
 ] as const;
 
 export type CustomAttributes = {

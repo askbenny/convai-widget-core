@@ -16,9 +16,10 @@ export interface ExpandableProps extends HTMLAttributes<HTMLDivElement> {
 interface TriggerProps {
   expandable?: boolean;
   expanded: Signal<boolean>;
+  onDismiss?: () => void;
 }
 
-export function Trigger({ expandable, expanded }: TriggerProps) {
+export function Trigger({ expandable, expanded, onDismiss }: TriggerProps) {
   const variant = useWidgetConfig().value.variant;
   const terms = useTerms();
   const { isDisconnected } = useConversation();
@@ -33,6 +34,7 @@ export function Trigger({ expandable, expanded }: TriggerProps) {
     return (
       <Layout
         expanded={expanded}
+        onDismiss={onDismiss}
         className={clsx(
           "bg-base shadow-md pointer-events-auto overflow-hidden",
           (isDisconnected.value || expanded.value) && "cursor-pointer"
@@ -46,6 +48,9 @@ export function Trigger({ expandable, expanded }: TriggerProps) {
 
   const Layout = isFull ? FullTrigger : CompactTrigger;
   return (
-    <Layout className="bg-base shadow-md pointer-events-auto overflow-hidden" />
+    <Layout
+      onDismiss={onDismiss}
+      className="bg-base shadow-md pointer-events-auto overflow-hidden"
+    />
   );
 }
