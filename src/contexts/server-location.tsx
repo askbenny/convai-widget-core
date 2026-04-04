@@ -25,17 +25,21 @@ export function ServerLocationProvider({
     const location = computed(() => parseLocation(serverLocation.value));
 
     const serverUrlMap: Record<Location, string> = {
-      'us': import.meta.env.VITE_SERVER_URL_US ?? '',
-      'eu-residency': import.meta.env.VITE_SERVER_URL_EU_RESIDENCY ?? '',
-      'in-residency': import.meta.env.VITE_SERVER_URL_IN_RESIDENCY ?? '',
-      'global': import.meta.env.VITE_SERVER_URL ?? '',
+      us: import.meta.env.VITE_SERVER_URL_US || "https://api.elevenlabs.io",
+      "eu-residency":
+        import.meta.env.VITE_SERVER_URL_EU_RESIDENCY || "https://api-eu.elevenlabs.io",
+      "in-residency":
+        import.meta.env.VITE_SERVER_URL_IN_RESIDENCY || "https://api-in.elevenlabs.io",
+      global: import.meta.env.VITE_SERVER_URL || "https://api.elevenlabs.io",
     };
 
     const websocketUrlMap: Record<Location, string> = {
-      'us': import.meta.env.VITE_WEBSOCKET_URL_US ?? '',
-      'eu-residency': import.meta.env.VITE_WEBSOCKET_URL_EU_RESIDENCY ?? '',
-      'in-residency': import.meta.env.VITE_WEBSOCKET_URL_IN_RESIDENCY ?? '',
-      'global': import.meta.env.VITE_WEBSOCKET_URL ?? '',
+      us: import.meta.env.VITE_WEBSOCKET_URL_US || "wss://api.elevenlabs.io",
+      "eu-residency":
+        import.meta.env.VITE_WEBSOCKET_URL_EU_RESIDENCY || "wss://api-eu.elevenlabs.io",
+      "in-residency":
+        import.meta.env.VITE_WEBSOCKET_URL_IN_RESIDENCY || "wss://api-in.elevenlabs.io",
+      global: import.meta.env.VITE_WEBSOCKET_URL || "wss://api.elevenlabs.io",
     };
     
     return {
