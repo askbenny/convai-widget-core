@@ -5,7 +5,10 @@ import { Button } from "../components/Button";
 import { InOutTransition } from "../components/InOutTransition";
 import { StatusLabel } from "./StatusLabel";
 import { useTextContents } from "../contexts/text-contents";
-import { useTextOnly, useTextInputEnabled } from "../contexts/widget-config";
+import {
+  useIsConversationTextOnly,
+  useTextInputEnabled,
+} from "../contexts/widget-config";
 
 export function AvatarOverlay({
   showAvatar,
@@ -20,7 +23,7 @@ export function AvatarOverlay({
 }) {
   const text = useTextContents();
   const textInputEnabled = useTextInputEnabled();
-  const textOnly = useTextOnly();
+  const textOnly = useIsConversationTextOnly();
 
   const containerClassName = useComputed(() =>
     cn(
