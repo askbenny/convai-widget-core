@@ -232,7 +232,7 @@ The build process requires several environment variables for server endpoints. A
 
 ## License
 
-MIT © ElevenLabs
+MIT © Askbenny
 
 ## Support
 
