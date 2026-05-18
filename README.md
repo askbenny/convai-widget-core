@@ -210,7 +210,7 @@ The build process requires several environment variables for server endpoints. A
    - Value: Enter the appropriate URL for your environment
    - Click "Add secret"
 
-**Note:** These variables must be prefixed with `VITE_` to be accessible in the Vite build process. The values should be the actual URLs for your ElevenLabs endpoints.
+**Note:** These variables must be prefixed with `VITE_` to be accessible in the Vite build process. The values should be the actual URLs for your endpoints.
 
 #### How It Works
 
