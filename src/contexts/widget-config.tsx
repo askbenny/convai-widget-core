@@ -21,6 +21,7 @@ import { useContextSafely } from "../utils/useContextSafely";
 import { parseBoolAttribute } from "../types/attributes";
 import { useLanguageConfig } from "./language-config";
 import { useConversation } from "./conversation";
+import { useSessionConfig } from "./session-config";
 
 const WidgetConfigContext = createContext<ReadonlySignal<WidgetConfig> | null>(
   null
@@ -200,8 +201,14 @@ export function useTextOnly() {
 export function useIsConversationTextOnly() {
   const textOnly = useTextOnly();
   const { conversationTextOnly } = useConversation();
+  const sessionConfig = useSessionConfig();
 
-  return useComputed(() => conversationTextOnly.value ?? textOnly.value);
+  return useComputed(
+    () =>
+      conversationTextOnly.value ??
+      sessionConfig.value.overrides?.conversation?.textOnly ??
+      textOnly.value
+  );
 }
 
 export function useFirstMessage() {
