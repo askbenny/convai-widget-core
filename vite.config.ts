@@ -25,6 +25,14 @@ export default defineConfig({
         id.startsWith("preact") ||
         id.startsWith("@preact") ||
         id.startsWith("@elevenlabs"),
+      output: {
+        // webrtcCompat must evaluate before the external @elevenlabs/client
+        // import (which runs webrtc-adapter shims at import time). Keeping it
+        // in its own chunk preserves that ordering; inlined into index.js it
+        // would run after the hoisted external imports.
+        manualChunks: id =>
+          id.includes("utils/webrtcCompat") ? "webrtcCompat" : undefined,
+      },
     },
   },
   plugins: [

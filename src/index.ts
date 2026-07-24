@@ -1,3 +1,4 @@
+import "./utils/webrtcCompat";
 import { setSourceInfo } from "@elevenlabs/client/internal";
 import { PACKAGE_VERSION } from "./version";
 import register from "preact-custom-element";
