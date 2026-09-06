@@ -39,6 +39,7 @@ export function SessionConfigProvider({ children }: { children: ComponentChildre
   const textOnly = useTextOnly();
   const fetched = useSignal<PublicAgentConfig | null>(null);
   const requestRef = useRef<AbortController | null>(null);
+  const presentationRequestRef = useRef<AbortController | null>(null);
   const aliveRef = useRef(true);
   const generationRef = useRef(0);
   const dynamicVariablesJSON = useAttribute("dynamic-variables");
@@ -59,6 +60,7 @@ export function SessionConfigProvider({ children }: { children: ComponentChildre
   useEffect(() => {
     fetched.value = null;
     const controller = new AbortController();
+    presentationRequestRef.current = controller;
     if (agentId.value && !signedUrl.value) {
       fetchWidgetConfig(agentId.value, environment.value, controller.signal)
         .then((config) => {
@@ -166,6 +168,18 @@ export function SessionConfigProvider({ children }: { children: ComponentChildre
           signedUrl.peek() !== explicitUrl
         )
           throw new Error("Conversation cancelled.");
+        // Signing is fresher than the optional initial presentation request. Repair
+        // its failure and prevent a late response from restoring an older greeting.
+        presentationRequestRef.current?.abort();
+        fetched.value = {
+          schemaVersion: session.schemaVersion,
+          agentId: session.agentId,
+          branchId: session.branchId,
+          demo: session.demo,
+          agent: session.agent,
+          tts: session.tts,
+          conversation: session.conversation,
+        };
         return applyManagedSession(requested, session);
       },
     }),

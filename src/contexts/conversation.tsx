@@ -360,6 +360,8 @@ function useConversationSetup() {
             error.value = null;
             return id;
           } catch (e) {
+            // Agent changes, explicit end and unmount intentionally invalidate this start.
+            if (!isCurrent()) return undefined;
             let message = "Could not start a conversation.";
             if (e instanceof CloseEvent) {
               message = e.reason || message;
