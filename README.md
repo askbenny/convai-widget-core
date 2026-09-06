@@ -237,3 +237,54 @@ MIT © Askbenny
 ## Support
 
 For issues and questions, please visit our [GitHub repository](https://github.com/askbenny/convai-widget-core).
+
+## Partner-hosted website widgets
+
+`registerWidget()` continues to register `askbenny-convai`. Existing `agent-id`,
+signed URL, event, voice, and chat integrations remain supported. Registration
+is idempotent, so loading another updated copy does not replace an existing tag.
+
+The optional neutral registration uses client-scoped configuration and fresh
+session authorization through a Partners deployment:
+
+```ts
+registerWidget("website-widget", {
+  "api-base-url": "https://api.askbennypartners.com",
+  "portal-hostname": "portal.yourbrand.com",
+});
+```
+
+```html
+<website-widget widget-id="wgt_CLIENT_UNIQUE_ID"></website-widget>
+```
+
+Explicit element attributes override registration defaults, allowing widgets
+from different deployments on one page. A `website-widget` without `widget-id`
+renders nothing; denied/invalid configuration never falls back to an Ask Benny
+agent. Managed configuration hides the platform footer. Each start calls
+`POST /website-widgets/{widgetId}/session?hostname=…`; the server returns a
+single-use `signedUrl`, server attribution in `dynamicVariables`, presentation
+`overrides.agent` (`firstMessage`/`language`), and an optional `textOnly` restriction.
+`GET /website-widgets/{widgetId}/config?hostname=…` returns `widget_config`.
+Both requests omit browser credentials. HTTPS is required except local loopback
+APIs. API authorization, origin checks, enablement, and billing remain server-owned.
+Removing a widget while authorization is pending prevents a late connection.
+
+The embed repository supplies a neutral-only `website.js` entrypoint so an older
+legacy script can load before or after it without duplicate tag registration.
+Partners serves that bundle through a connected hostname's `/widget.js` loader.
+
+### Verification
+
+Install the browser with `pnpm exec playwright install chromium`, then run:
+
+```sh
+VITE_SERVER_URL_US=https://voice.test VITE_WEBSOCKET_URL_US=wss://voice.test pnpm test --run --browser.headless
+pnpm lint
+pnpm build
+```
+
+Fixtures intercept legacy bootstrap, widget configuration, and provider sockets.
+Browser test files run sequentially because their MSW service worker uses a shared
+scope. Existing legacy tests remain intact; added tests cover registration,
+client/backend isolation, denied access, fresh authorization, and teardown.

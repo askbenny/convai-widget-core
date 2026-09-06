@@ -1,10 +1,5 @@
 import { HTMLAttributes } from "preact/compat";
-import {
-  getSignalish,
-  peekSignalish,
-  Signalish,
-  useSignalish,
-} from "../utils/signalish";
+import { getSignalish, peekSignalish, Signalish, useSignalish } from "../utils/signalish";
 import { useSignal, useSignalEffect } from "@preact/signals";
 import { Slot } from "@radix-ui/react-slot";
 import { useReducedMotion } from "../utils/useReducedMotion";
@@ -61,20 +56,33 @@ function Animated({
   const active = useSignalish(activeSignalish);
   const visible = useSignal(peekSignalish(initial));
 
-  useSignalEffect(() => {
-    if (active.value) {
-      visible.value = active.value;
-    }
-  });
-
-  const { handlers } = useCSSTransition({
+  const { handlers, transitioning } = useCSSTransition({
     onEnd: () => {
       visible.value = active.value;
     },
   });
 
+  useSignalEffect(() => {
+    if (active.value) {
+      visible.value = true;
+      return;
+    }
+    // A rapid dismiss can happen before an entering element is painted. In that
+    // case CSS emits no transitionend, so waiting for it would retain the widget
+    // forever. Give the browser two frames to start a transition, then clean up
+    // immediately if none exists. Real transitions still finish through onEnd.
+    let secondFrame: number | undefined;
+    const firstFrame = requestAnimationFrame(() => {
+      secondFrame = requestAnimationFrame(() => {
+        if (!transitioning.peek()) visible.value = false;
+      });
+    });
+    return () => {
+      cancelAnimationFrame(firstFrame);
+      if (secondFrame !== undefined) cancelAnimationFrame(secondFrame);
+    };
+  });
+
   if (!active.value && !visible.value) return null;
-  return (
-    <Slot data-shown={active.value && visible.value} {...handlers} {...props} />
-  );
+  return <Slot data-shown={active.value && visible.value} {...handlers} {...props} />;
 }

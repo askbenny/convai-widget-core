@@ -1,15 +1,9 @@
-import {
-  Conversation,
-  Mode,
-  Role,
-  SessionConfig,
-  Status,
-} from "@elevenlabs/client";
+import { Conversation, Mode, Role, SessionConfig, Status } from "@elevenlabs/client";
 import { computed, signal, useSignalEffect } from "@preact/signals";
 import { ComponentChildren } from "preact";
 import { createContext, useMemo } from "preact/compat";
 import { useEffect, useRef } from "react";
-import { useSessionConfig } from "./session-config";
+import { useSessionConfig, useSessionConfigResolver } from "./session-config";
 
 import { useContextSafely } from "../utils/useContextSafely";
 import { useTerms } from "./terms";
@@ -19,9 +13,7 @@ import { useShadowHost } from "./shadow-host";
 
 type ConversationSetup = ReturnType<typeof useConversationSetup>;
 
-export const ConversationContext = createContext<ConversationSetup | null>(
-  null
-);
+export const ConversationContext = createContext<ConversationSetup | null>(null);
 
 interface ConversationProviderProps {
   children: ComponentChildren;
@@ -86,11 +78,7 @@ export function ConversationProvider({ children }: ConversationProviderProps) {
     }
   });
 
-  return (
-    <ConversationContext.Provider value={value}>
-      {children}
-    </ConversationContext.Provider>
-  );
+  return <ConversationContext.Provider value={value}>{children}</ConversationContext.Provider>;
 }
 
 export function useConversation() {
@@ -98,6 +86,7 @@ export function useConversation() {
 }
 
 function useConversationSetup() {
+  const disposed = useRef(false);
   const conversationRef = useRef<Conversation | null>(null);
   const lockRef = useRef<Promise<Conversation> | null>(null);
   const receivedFirstMessageRef = useRef(false);
@@ -109,11 +98,14 @@ function useConversationSetup() {
   const firstMessage = useFirstMessage();
   const terms = useTerms();
   const config = useSessionConfig();
+  const resolveSessionConfig = useSessionConfigResolver();
 
   // Stop the conversation when the component unmounts.
   // This can happen when the widget is used inside another framework.
   useEffect(() => {
+    disposed.current = false;
     return () => {
+      disposed.current = true;
       conversationRef.current?.endSession();
     };
   }, []);
@@ -168,15 +160,9 @@ function useConversationSetup() {
         }
 
         try {
-          processedConfig = triggerCallEvent(
-            shadowHost.value ?? element,
-            processedConfig
-          );
+          processedConfig = triggerCallEvent(shadowHost.value ?? element, processedConfig);
         } catch (error) {
-          console.error(
-            "[ConversationalAI] Error triggering call event:",
-            error
-          );
+          console.error("[ConversationalAI] Error triggering call event:", error);
         }
 
         conversationTextOnly.value = processedConfig.textOnly ?? false;
@@ -193,164 +179,173 @@ function useConversationSetup() {
           : [];
 
         try {
-          lockRef.current = Conversation.startSession({
-            ...processedConfig,
-            onModeChange: props => {
-              mode.value = props.mode;
-            },
-            onStatusChange: props => {
-              status.value = props.status;
-            },
-            onCanSendFeedbackChange: props => {
-              canSendFeedback.value = props.canSendFeedback;
-            },
-            onMessage: ({ role, message, event_id }) => {
-              if (
-                firstMessage.peek() &&
-                conversationTextOnly.peek() === true &&
-                role === "agent" &&
-                !receivedFirstMessageRef.current
-              ) {
-                receivedFirstMessageRef.current = true;
-                // Text mode is always started by the user sending a text message.
-                // We need to ignore the first agent message as it is immediately
-                // interrupted by the user input.
-                return;
-              } else if (role === "agent") {
-                receivedFirstMessageRef.current = true;
-              }
-
-              if (role === "agent" && isReceivingStreamRef.current) {
-                const streamingIndex = streamingMessageIndexRef.current;
-                if (streamingIndex !== null) {
-                  const currentTranscript = transcript.peek();
-                  const updatedTranscript = [...currentTranscript];
-                  updatedTranscript[streamingIndex] = {
-                    type: "message",
-                    role: "agent",
-                    message,
-                    isText: true,
-                    conversationIndex: conversationIndex.peek(),
-                    eventId: event_id,
-                  };
-                  transcript.value = updatedTranscript;
+          lockRef.current = resolveSessionConfig(processedConfig).then((resolvedConfig) => {
+            if (disposed.current)
+              throw new Error("The widget was removed before the conversation started.");
+            return Conversation.startSession({
+              ...resolvedConfig,
+              onModeChange: (props) => {
+                mode.value = props.mode;
+              },
+              onStatusChange: (props) => {
+                status.value = props.status;
+              },
+              onCanSendFeedbackChange: (props) => {
+                canSendFeedback.value = props.canSendFeedback;
+              },
+              onMessage: ({ role, message, event_id }) => {
+                if (
+                  firstMessage.peek() &&
+                  conversationTextOnly.peek() === true &&
+                  role === "agent" &&
+                  !receivedFirstMessageRef.current
+                ) {
+                  receivedFirstMessageRef.current = true;
+                  // Text mode is always started by the user sending a text message.
+                  // We need to ignore the first agent message as it is immediately
+                  // interrupted by the user input.
+                  return;
+                } else if (role === "agent") {
+                  receivedFirstMessageRef.current = true;
                 }
-                isReceivingStreamRef.current = false;
-                return;
-              }
 
-              transcript.value = [
-                ...transcript.peek(),
-                {
-                  type: "message",
-                  role,
-                  message,
-                  isText: false,
-                  conversationIndex: conversationIndex.peek(),
-                  eventId: event_id,
-                },
-              ];
-            },
-            onAgentChatResponsePart: ({ text, type, event_id }) => {
-              if (
-                firstMessage.peek() &&
-                conversationTextOnly.peek() === true &&
-                !receivedFirstMessageRef.current
-              ) {
-                // Text mode is always started by the user sending a text message.
-                // We need to ignore the first agent message as it is immediately
-                // interrupted by the user input.
-                return;
-              }
+                if (role === "agent" && isReceivingStreamRef.current) {
+                  const streamingIndex = streamingMessageIndexRef.current;
+                  if (streamingIndex !== null) {
+                    const currentTranscript = transcript.peek();
+                    const updatedTranscript = [...currentTranscript];
+                    updatedTranscript[streamingIndex] = {
+                      type: "message",
+                      role: "agent",
+                      message,
+                      isText: true,
+                      conversationIndex: conversationIndex.peek(),
+                      eventId: event_id,
+                    };
+                    transcript.value = updatedTranscript;
+                  }
+                  isReceivingStreamRef.current = false;
+                  return;
+                }
 
-              if (type === "start") {
-                isReceivingStreamRef.current = true;
-                const currentTranscript = transcript.peek();
-                streamingMessageIndexRef.current = currentTranscript.length;
                 transcript.value = [
-                  ...currentTranscript,
+                  ...transcript.peek(),
                   {
                     type: "message",
-                    role: "agent",
-                    message: "",
-                    isText: true,
+                    role,
+                    message,
+                    isText: false,
                     conversationIndex: conversationIndex.peek(),
                     eventId: event_id,
                   },
                 ];
-              } else if (type === "delta") {
-                const streamingIndex = streamingMessageIndexRef.current;
-                if (streamingIndex !== null && text) {
-                  const currentTranscript = transcript.peek();
-                  const entry = currentTranscript[streamingIndex];
-                  if (entry.type === "message") {
-                    const updatedTranscript = [...currentTranscript];
-                    updatedTranscript[streamingIndex] = {
-                      ...entry,
-                      message: entry.message + text,
-                    };
-                    transcript.value = updatedTranscript;
-                  }
+              },
+              onAgentChatResponsePart: ({ text, type, event_id }) => {
+                if (
+                  firstMessage.peek() &&
+                  conversationTextOnly.peek() === true &&
+                  !receivedFirstMessageRef.current
+                ) {
+                  // Text mode is always started by the user sending a text message.
+                  // We need to ignore the first agent message as it is immediately
+                  // interrupted by the user input.
+                  return;
                 }
-              } else if (type === "stop") {
-                streamingMessageIndexRef.current = null;
-              }
-            },
-            onAgentToolRequest: ({ tool_call_id, tool_name, event_id }) => {
-              transcript.value = [
-                ...transcript.peek(),
-                {
-                  type: "agent_tool_request",
-                  toolName: tool_name,
-                  toolCallId: tool_call_id,
-                  eventId: event_id,
-                  conversationIndex: conversationIndex.peek(),
-                },
-              ];
-            },
-            onAgentToolResponse: ({ tool_call_id, is_error, event_id }) => {
-              transcript.value = [
-                ...transcript.peek(),
-                {
-                  type: "agent_tool_response",
-                  toolCallId: tool_call_id,
-                  eventId: event_id,
-                  isError: is_error,
-                  conversationIndex: conversationIndex.peek(),
-                },
-              ];
-            },
-            onDisconnect: details => {
-              receivedFirstMessageRef.current = false;
-              conversationTextOnly.value = null;
-              streamingMessageIndexRef.current = null;
-              isReceivingStreamRef.current = false;
-              transcript.value = [
-                ...transcript.peek(),
-                details.reason === "error"
-                  ? {
-                      type: "error",
-                      message: details.message,
+
+                if (type === "start") {
+                  isReceivingStreamRef.current = true;
+                  const currentTranscript = transcript.peek();
+                  streamingMessageIndexRef.current = currentTranscript.length;
+                  transcript.value = [
+                    ...currentTranscript,
+                    {
+                      type: "message",
+                      role: "agent",
+                      message: "",
+                      isText: true,
                       conversationIndex: conversationIndex.peek(),
-                    }
-                  : {
-                      type: "disconnection",
-                      role: details.reason === "user" ? "user" : "agent",
-                      conversationIndex: conversationIndex.peek(),
+                      eventId: event_id,
                     },
-              ];
-              conversationIndex.value++;
-              if (details.reason === "error") {
-                error.value = details.message;
-                console.error(
-                  "[ConversationalAI] Disconnected due to an error:",
-                  details.message
-                );
-              }
-            },
+                  ];
+                } else if (type === "delta") {
+                  const streamingIndex = streamingMessageIndexRef.current;
+                  if (streamingIndex !== null && text) {
+                    const currentTranscript = transcript.peek();
+                    const entry = currentTranscript[streamingIndex];
+                    if (entry.type === "message") {
+                      const updatedTranscript = [...currentTranscript];
+                      updatedTranscript[streamingIndex] = {
+                        ...entry,
+                        message: entry.message + text,
+                      };
+                      transcript.value = updatedTranscript;
+                    }
+                  }
+                } else if (type === "stop") {
+                  streamingMessageIndexRef.current = null;
+                }
+              },
+              onAgentToolRequest: ({ tool_call_id, tool_name, event_id }) => {
+                transcript.value = [
+                  ...transcript.peek(),
+                  {
+                    type: "agent_tool_request",
+                    toolName: tool_name,
+                    toolCallId: tool_call_id,
+                    eventId: event_id,
+                    conversationIndex: conversationIndex.peek(),
+                  },
+                ];
+              },
+              onAgentToolResponse: ({ tool_call_id, is_error, event_id }) => {
+                transcript.value = [
+                  ...transcript.peek(),
+                  {
+                    type: "agent_tool_response",
+                    toolCallId: tool_call_id,
+                    eventId: event_id,
+                    isError: is_error,
+                    conversationIndex: conversationIndex.peek(),
+                  },
+                ];
+              },
+              onDisconnect: (details) => {
+                receivedFirstMessageRef.current = false;
+                conversationTextOnly.value = null;
+                streamingMessageIndexRef.current = null;
+                isReceivingStreamRef.current = false;
+                transcript.value = [
+                  ...transcript.peek(),
+                  details.reason === "error"
+                    ? {
+                        type: "error",
+                        message: details.message,
+                        conversationIndex: conversationIndex.peek(),
+                      }
+                    : {
+                        type: "disconnection",
+                        role: details.reason === "user" ? "user" : "agent",
+                        conversationIndex: conversationIndex.peek(),
+                      },
+                ];
+                conversationIndex.value++;
+                if (details.reason === "error") {
+                  error.value = details.message;
+                  console.error(
+                    "[ConversationalAI] Disconnected due to an error:",
+                    details.message
+                  );
+                }
+              },
+            });
           });
 
           conversationRef.current = await lockRef.current;
+          if (disposed.current) {
+            await conversationRef.current.endSession();
+            conversationRef.current = null;
+            return;
+          }
           if (initialMessage) {
             const instance = conversationRef.current;
             // TODO: Remove the delay once BE can handle it
@@ -433,10 +428,7 @@ function useConversationSetup() {
   }, [config]);
 }
 
-function triggerCallEvent(
-  element: HTMLElement,
-  config: SessionConfig
-): SessionConfig {
+function triggerCallEvent(element: HTMLElement, config: SessionConfig): SessionConfig {
   try {
     const event = new CustomEvent("elevenlabs-convai:call", {
       bubbles: true,

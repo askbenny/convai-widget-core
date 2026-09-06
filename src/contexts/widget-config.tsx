@@ -1,9 +1,4 @@
-import {
-  ReadonlySignal,
-  useComputed,
-  useSignal,
-  useSignalEffect,
-} from "@preact/signals";
+import { ReadonlySignal, useComputed, useSignal, useSignalEffect } from "@preact/signals";
 import { TinyColor } from "@ctrl/tinycolor";
 import { ComponentChildren } from "preact";
 import { createContext } from "preact/compat";
@@ -22,10 +17,9 @@ import { parseBoolAttribute } from "../types/attributes";
 import { useLanguageConfig } from "./language-config";
 import { useConversation } from "./conversation";
 import { useSessionConfig } from "./session-config";
+import { websiteWidgetUrl } from "../utils/website-widget-api";
 
-const WidgetConfigContext = createContext<ReadonlySignal<WidgetConfig> | null>(
-  null
-);
+const WidgetConfigContext = createContext<ReadonlySignal<WidgetConfig> | null>(null);
 
 interface WidgetConfigProviderProps {
   children: ComponentChildren;
@@ -36,9 +30,34 @@ export function WidgetConfigProvider({ children }: WidgetConfigProviderProps) {
   const agentId = useAttribute("agent-id");
   const overrideConfig = useAttribute("override-config");
   const signedUrl = useAttribute("signed-url");
+  const widgetId = useAttribute("widget-id");
+  const apiBaseUrl = useAttribute("api-base-url");
+  const portalHostname = useAttribute("portal-hostname");
   const fetchedConfig = useSignal<WidgetConfig | null>(null);
 
   useSignalEffect(() => {
+    if (widgetId.value) {
+      const abort = new AbortController();
+      fetchedConfig.value = null;
+      // Resolve all attributes synchronously so signal changes cancel the old request.
+      const id = widgetId.value;
+      const base = apiBaseUrl.value;
+      const hostname = portalHostname.value;
+      Promise.resolve()
+        .then(async () => {
+          const url = websiteWidgetUrl(base, id, hostname, "config");
+          const response = await fetch(url, { signal: abort.signal, credentials: "omit" });
+          if (!response.ok) throw new Error("The website widget is unavailable.");
+          const data = await response.json();
+          if (!data.widget_config) throw new Error("The website widget configuration is invalid.");
+          if (!abort.signal.aborted)
+            fetchedConfig.value = { ...data.widget_config, disable_banner: true };
+        })
+        .catch((error) => {
+          if (!abort.signal.aborted) console.error("[WebsiteWidget] Could not load widget:", error);
+        });
+      return () => abort.abort();
+    }
     if (overrideConfig.value) {
       try {
         const config = JSON.parse(overrideConfig.value);
@@ -47,9 +66,7 @@ export function WidgetConfigProvider({ children }: WidgetConfigProviderProps) {
           return;
         }
       } catch (error: any) {
-        console.error(
-          `[ConversationalAI] Cannot parse override-config: ${error?.message}`
-        );
+        console.error(`[ConversationalAI] Cannot parse override-config: ${error?.message}`);
       }
     }
     let currentAgentId: string | undefined = agentId.value;
@@ -66,18 +83,13 @@ export function WidgetConfigProvider({ children }: WidgetConfigProviderProps) {
     }
 
     const abort = new AbortController();
-    fetchConfig(
-      currentAgentId,
-      serverUrl.value,
-      abort.signal,
-      conversationSignature
-    )
-      .then(config => {
+    fetchConfig(currentAgentId, serverUrl.value, abort.signal, conversationSignature)
+      .then((config) => {
         if (!abort.signal.aborted) {
           fetchedConfig.value = config;
         }
       })
-      .catch(error => {
+      .catch((error) => {
         console.error(
           `[ConversationalAI] Cannot fetch config for agent ${agentId.value}: ${error?.message}`
         );
@@ -116,41 +128,25 @@ export function WidgetConfigProvider({ children }: WidgetConfigProviderProps) {
     const patchedTermsKey = termsKey.value ?? fetchedConfig.value.terms_key;
 
     const textOnly =
-      parseBoolAttribute(overrideTextOnly.value) ??
-      fetchedConfig.value.text_only ??
-      false;
+      parseBoolAttribute(overrideTextOnly.value) ?? fetchedConfig.value.text_only ?? false;
 
     const patchedMicMuting =
-      parseBoolAttribute(micMuting.value) ??
-      fetchedConfig.value.mic_muting_enabled;
+      parseBoolAttribute(micMuting.value) ?? fetchedConfig.value.mic_muting_enabled;
     const patchedTranscript =
-      parseBoolAttribute(transcript.value) ??
-      fetchedConfig.value.transcript_enabled;
+      parseBoolAttribute(transcript.value) ?? fetchedConfig.value.transcript_enabled;
     const patchedTextInput =
-      parseBoolAttribute(textInput.value) ??
-      fetchedConfig.value.text_input_enabled;
+      parseBoolAttribute(textInput.value) ?? fetchedConfig.value.text_input_enabled;
     const patchedAlwaysExpanded =
-      parseBoolAttribute(alwaysExpanded.value) ??
-      fetchedConfig.value.always_expanded ??
-      false;
+      parseBoolAttribute(alwaysExpanded.value) ?? fetchedConfig.value.always_expanded ?? false;
     const patchedDefaultExpanded =
-      parseBoolAttribute(defaultExpanded.value) ??
-      fetchedConfig.value.default_expanded ??
-      false;
+      parseBoolAttribute(defaultExpanded.value) ?? fetchedConfig.value.default_expanded ?? false;
     const patchedDismissible =
-      parseBoolAttribute(dismissible.value) ??
-      fetchedConfig.value.dismissible ??
-      false;
+      parseBoolAttribute(dismissible.value) ?? fetchedConfig.value.dismissible ?? false;
     const patchedStripAudioTags =
-      parseBoolAttribute(stripAudioTags.value) ??
-      fetchedConfig.value.strip_audio_tags ??
-      !textOnly;
-    const patchedUseRtc =
-      parseBoolAttribute(useRtc.value) ?? fetchedConfig.value.use_rtc ?? false;
+      parseBoolAttribute(stripAudioTags.value) ?? fetchedConfig.value.strip_audio_tags ?? !textOnly;
+    const patchedUseRtc = parseBoolAttribute(useRtc.value) ?? fetchedConfig.value.use_rtc ?? false;
     const patchedShowAgentStatus =
-      parseBoolAttribute(showAgentStatus.value) ??
-      fetchedConfig.value.show_agent_status ??
-      false;
+      parseBoolAttribute(showAgentStatus.value) ?? fetchedConfig.value.show_agent_status ?? false;
     const patchedShowConversationId =
       parseBoolAttribute(showConversationId.value) ??
       fetchedConfig.value.show_conversation_id ??
@@ -193,9 +189,7 @@ export function useTextOnly() {
   const override = useAttribute("override-text-only");
   const config = useWidgetConfig();
 
-  return useComputed(
-    () => parseBoolAttribute(override.value) ?? config.value.text_only ?? false
-  );
+  return useComputed(() => parseBoolAttribute(override.value) ?? config.value.text_only ?? false);
 }
 
 export function useIsConversationTextOnly() {
@@ -206,7 +200,7 @@ export function useIsConversationTextOnly() {
   return useComputed(
     () =>
       conversationTextOnly.value ??
-      sessionConfig.value.overrides?.conversation?.textOnly ??
+      sessionConfig.value?.overrides?.conversation?.textOnly ??
       textOnly.value
   );
 }
@@ -218,8 +212,7 @@ export function useFirstMessage() {
   return useComputed(
     () =>
       override.value ??
-      config.value.language_presets?.[language.value.languageCode]
-        ?.first_message ??
+      config.value.language_presets?.[language.value.languageCode]?.first_message ??
       config.value.first_message ??
       null
   );
@@ -273,16 +266,16 @@ export function useMarkdownLinkConfig() {
     if (overrideHosts.value) {
       allowedHosts = overrideHosts.value
         .split(",")
-        .map(d => d.trim())
+        .map((d) => d.trim())
         .filter(Boolean);
     } else {
       const hosts = config.value.markdown_link_allowed_hosts;
       if (hosts && hosts.length > 0) {
-        const hasWildcard = hosts.some(h => h.hostname === "*");
+        const hasWildcard = hosts.some((h) => h.hostname === "*");
         if (hasWildcard) {
           allowedHosts = ["*"];
         } else {
-          allowedHosts = hosts.map(h => h.hostname);
+          allowedHosts = hosts.map((h) => h.hostname);
         }
       }
     }
@@ -293,9 +286,7 @@ export function useMarkdownLinkConfig() {
       true;
 
     const allowHttp =
-      parseBoolAttribute(overrideAllowHttp.value) ??
-      config.value.markdown_link_allow_http ??
-      true;
+      parseBoolAttribute(overrideAllowHttp.value) ?? config.value.markdown_link_allow_http ?? true;
 
     return { allowedHosts, includeWww, allowHttp };
   });
@@ -312,8 +303,7 @@ export function useSyntaxTheme() {
       return explicitValue;
     }
     // Auto-detect based on base_active background color
-    const baseActive =
-      config.value.styles?.base_active ?? DefaultStyles.base_active;
+    const baseActive = config.value.styles?.base_active ?? DefaultStyles.base_active;
     const color = new TinyColor(baseActive);
 
     if (!color.isValid) {

@@ -41,6 +41,7 @@ export function useCSSTransition({ onStart, onEnd }: CSSTransitionOptions) {
     handlers: {
       onTransitionStart: handleTransitionStart,
       onTransitionEnd: handleTransitionEnd,
+      onTransitionCancel: handleTransitionEnd,
     },
   };
 }

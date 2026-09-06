@@ -10,6 +10,7 @@ import { useEffect } from "preact/hooks";
 import { useContextSafely } from "../utils/useContextSafely";
 import { parseBoolAttribute } from "../types/attributes";
 import { useTextOnly, useWebRTC } from "./widget-config";
+import { websiteWidgetUrl } from "../utils/website-widget-api";
 
 type DynamicVariables = Record<string, string | number | boolean>;
 
@@ -63,16 +64,16 @@ async function fetchAgentConfig(agentId: string): Promise<AgentConfig | null> {
   }
 }
 
-const SessionConfigContext =
-  createContext<ReadonlySignal<SessionConfig> | null>(null);
+const SessionConfigContext = createContext<ReadonlySignal<SessionConfig> | null>(null);
+const SessionResolverContext = createContext<
+  ((config: SessionConfig) => Promise<SessionConfig>) | null
+>(null);
 
 interface SessionConfigProviderProps {
   children: ComponentChildren;
 }
 
-export function SessionConfigProvider({
-  children,
-}: SessionConfigProviderProps) {
+export function SessionConfigProvider({ children }: SessionConfigProviderProps) {
   const { language } = useLanguageConfig();
   const overridePrompt = useAttribute("override-prompt");
   const overrideLLM = useAttribute("override-llm");
@@ -86,7 +87,6 @@ export function SessionConfigProvider({
 
   // Add state for fetched agent config (moved here to be available for overrides)
   const fetchedAgentConfig = useSignal<AgentConfig | null>(null);
-  const isLoadingAgentConfig = useSignal(false);
 
   const overrides = useComputed<SessionConfig["overrides"]>(() => {
     const baseOverrides: SessionConfig["overrides"] = {
@@ -101,7 +101,9 @@ export function SessionConfigProvider({
         voiceId: overrideVoiceId.value,
         speed: overrideSpeed.value ? parseFloat(overrideSpeed.value) : undefined,
         stability: overrideStability.value ? parseFloat(overrideStability.value) : undefined,
-        similarityBoost: overrideSimilarityBoost.value ? parseFloat(overrideSimilarityBoost.value) : undefined,
+        similarityBoost: overrideSimilarityBoost.value
+          ? parseFloat(overrideSimilarityBoost.value)
+          : undefined,
       },
       conversation: {
         textOnly: parseBoolAttribute(overrideTextOnly.value) ?? undefined,
@@ -126,7 +128,9 @@ export function SessionConfigProvider({
           voiceId: config.tts?.voiceId || overrideVoiceId.value,
           speed: overrideSpeed.value ? parseFloat(overrideSpeed.value) : undefined,
           stability: overrideStability.value ? parseFloat(overrideStability.value) : undefined,
-          similarityBoost: overrideSimilarityBoost.value ? parseFloat(overrideSimilarityBoost.value) : undefined,
+          similarityBoost: overrideSimilarityBoost.value
+            ? parseFloat(overrideSimilarityBoost.value)
+            : undefined,
         },
         conversation: {
           textOnly:
@@ -145,9 +149,7 @@ export function SessionConfigProvider({
       try {
         return JSON.parse(dynamicVariablesJSON.value) as DynamicVariables;
       } catch (e: any) {
-        console.error(
-          `[ConversationalAI] Cannot parse dynamic-variables: ${e?.message}`
-        );
+        console.error(`[ConversationalAI] Cannot parse dynamic-variables: ${e?.message}`);
       }
     }
 
@@ -155,13 +157,14 @@ export function SessionConfigProvider({
   });
 
   const rawAudioProcessor = useAttribute("worklet-path-raw-audio-processor");
-  const audioConcatProcessor = useAttribute(
-    "worklet-path-audio-concat-processor"
-  );
+  const audioConcatProcessor = useAttribute("worklet-path-audio-concat-processor");
   const libsamplerate = useAttribute("worklet-path-libsamplerate");
 
   const { webSocketUrl } = useServerLocation();
   const agentId = useAttribute("agent-id");
+  const widgetId = useAttribute("widget-id");
+  const apiBaseUrl = useAttribute("api-base-url");
+  const portalHostname = useAttribute("portal-hostname");
   const signedUrl = useAttribute("signed-url");
   const environment = useAttribute("environment");
   const textOnly = useTextOnly();
@@ -169,29 +172,30 @@ export function SessionConfigProvider({
 
   // Add state for fetched signed URL
   const fetchedSignedUrl = useSignal<string | null>(null);
-  const isLoadingSignedUrl = useSignal(false);
+  const loadedLegacyKey = useSignal("");
 
-  // Fetch signed URL when agentId is available but signedUrl is not.
+  // Resolve the legacy bootstrap before exposing interactive controls. Rendering
+  // them first and then entering a loading state discarded clicks and language
+  // selection when a fast bootstrap response remounted the conversation subtree.
   useEffect(() => {
-    if (agentId.value && !signedUrl.value && !fetchedSignedUrl.value && !isLoadingSignedUrl.value) {
-      isLoadingSignedUrl.value = true;
-      fetchSignedUrl(agentId.value).then((url) => {
-        fetchedSignedUrl.value = url;
-        isLoadingSignedUrl.value = false;
-      });
-    }
-  }, [agentId.value, signedUrl.value]);
-
-  // Fetch agent config when agentId is available
-  useEffect(() => {
-    if (agentId.value && !fetchedAgentConfig.value && !isLoadingAgentConfig.value) {
-      isLoadingAgentConfig.value = true;
-      fetchAgentConfig(agentId.value).then((config) => {
-        fetchedAgentConfig.value = config;
-        isLoadingAgentConfig.value = false;
-      });
-    }
-  }, [agentId.value]);
+    const id = agentId.value;
+    if (widgetId.value || !id) return;
+    const explicitUrl = signedUrl.value;
+    const key = `${id}|${explicitUrl ?? ""}`;
+    let cancelled = false;
+    Promise.all([
+      explicitUrl ? Promise.resolve(null) : fetchSignedUrl(id),
+      fetchAgentConfig(id),
+    ]).then(([url, agent]) => {
+      if (cancelled) return;
+      fetchedSignedUrl.value = url;
+      fetchedAgentConfig.value = agent;
+      loadedLegacyKey.value = key;
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [widgetId.value, agentId.value, signedUrl.value]);
 
   const value = useComputed<SessionConfig | null>(() => {
     const isWebRTC = useWebRTCEnabled.value;
@@ -209,6 +213,12 @@ export function SessionConfigProvider({
       },
     } as const satisfies Partial<SessionConfig | AudioWorkletConfig>;
 
+    // Hosted widgets obtain fresh access at each start through the resolver.
+    // This empty connection is never passed to the SDK.
+    if (widgetId.value) {
+      return { ...baseConfig, signedUrl: "", connectionType: "websocket" as const };
+    }
+
     // If explicit signed URL is provided, use it
     if (signedUrl.value) {
       return {
@@ -218,6 +228,9 @@ export function SessionConfigProvider({
       };
     }
 
+    if (agentId.value && loadedLegacyKey.value !== `${agentId.value}|${signedUrl.value ?? ""}`)
+      return null;
+
     // If fetched signed URL is available, use it
     if (fetchedSignedUrl.value) {
       return {
@@ -225,11 +238,6 @@ export function SessionConfigProvider({
         connectionType: "websocket" as const,
         ...baseConfig,
       };
-    }
-
-    // If agentId is provided but still loading signed URL or agent config, return null to wait
-    if (agentId.value && (isLoadingSignedUrl.value || isLoadingAgentConfig.value)) {
-      return null;
     }
 
     // Fallback to agentId-based config
@@ -251,9 +259,7 @@ export function SessionConfigProvider({
       }
     }
 
-    console.error(
-      "[ConversationalAI] Either agent-id or signed-url is required"
-    );
+    console.error("[ConversationalAI] Either agent-id or signed-url is required");
     return null;
   });
 
@@ -261,15 +267,55 @@ export function SessionConfigProvider({
     return null;
   }
 
+  const resolveSession = async (config: SessionConfig): Promise<SessionConfig> => {
+    if (!widgetId.value) return config;
+    const url = websiteWidgetUrl(apiBaseUrl.value, widgetId.value, portalHostname.value, "session");
+    const response = await fetch(url, { method: "POST", credentials: "omit" });
+    if (!response.ok) throw new Error("This website assistant is currently unavailable.");
+    const data = await response.json();
+    if (typeof data.signedUrl !== "string" || !data.signedUrl.startsWith("wss://")) {
+      throw new Error("Could not start the website assistant.");
+    }
+    if (typeof data.dynamicVariables?.website_session_id !== "string") {
+      throw new Error("Could not start the website assistant.");
+    }
+    return {
+      ...config,
+      agentId: undefined,
+      conversationToken: undefined,
+      signedUrl: data.signedUrl,
+      connectionType: "websocket",
+      textOnly: data.textOnly === true || config.textOnly === true,
+      overrides: {
+        agent: {
+          firstMessage:
+            typeof data.overrides?.agent?.firstMessage === "string"
+              ? data.overrides.agent.firstMessage
+              : undefined,
+          language: data.overrides?.agent?.language === "fr" ? "fr" : "en",
+        },
+        conversation: { textOnly: data.textOnly === true || config.textOnly === true },
+      },
+      dynamicVariables: {
+        ...config.dynamicVariables,
+        website_session_id: data.dynamicVariables.website_session_id,
+      },
+    };
+  };
+
   return (
-    <SessionConfigContext.Provider
-      value={value as ReadonlySignal<SessionConfig>}
-    >
-      {children}
+    <SessionConfigContext.Provider value={value as ReadonlySignal<SessionConfig>}>
+      <SessionResolverContext.Provider value={resolveSession}>
+        {children}
+      </SessionResolverContext.Provider>
     </SessionConfigContext.Provider>
   );
 }
 
 export function useSessionConfig() {
   return useContextSafely(SessionConfigContext);
+}
+
+export function useSessionConfigResolver() {
+  return useContextSafely(SessionResolverContext);
 }

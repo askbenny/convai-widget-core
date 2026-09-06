@@ -1,4 +1,4 @@
-import { memo } from "preact/compat";
+import { memo, useLayoutEffect } from "preact/compat";
 import { useComputed, useSignal, useSignalEffect } from "@preact/signals";
 import { useWidgetConfig } from "../contexts/widget-config";
 import { clsx } from "clsx";
@@ -62,9 +62,11 @@ export const Wrapper = memo(function Wrapper() {
     )
   );
   // Powered by should always at bottom of the viewport in fullscreen mode
-  const poweredByClassName = useComputed(() => (
-    variant.value === "fullscreen" ? cn(className.value, PLACEMENT_CLASSES["bottom"]) : className.value
-  ));
+  const poweredByClassName = useComputed(() =>
+    variant.value === "fullscreen"
+      ? cn(className.value, PLACEMENT_CLASSES["bottom"])
+      : className.value
+  );
 
   useSignalEffect(() => {
     if (error.value) {
@@ -78,11 +80,14 @@ export const Wrapper = memo(function Wrapper() {
   });
 
   // Listen for custom expansion events
-  useSignalEffect(() => {
+  useLayoutEffect(() => {
     const handleExpandEvent = ((event: CustomEvent) => {
       if (!event.detail || event.detail._convaiEventHandled) {
         return;
       }
+      // Ignore events emitted by another widget (including listeners awaiting
+      // cleanup after a component is removed). Document events remain global.
+      if (event.target !== document && event.target !== shadowHost.peek()) return;
 
       event.detail._convaiEventHandled = true;
       if (event.detail.action === "expand") {
@@ -103,7 +108,7 @@ export const Wrapper = memo(function Wrapper() {
       document.removeEventListener("elevenlabs-agent:expand", handleExpandEvent);
       host?.removeEventListener("elevenlabs-agent:expand", handleExpandEvent);
     };
-  });
+  }, [shadowHost.value]);
 
   const state = useComputed(() => {
     if (!expandable.value && !!error.value && !sawError.value) {
