@@ -23,3 +23,7 @@ test("published core pins the external runtimes used by its tests", () => {
   for (const name of ["preact", "@preact/signals", "@elevenlabs/client"])
     assert.match(pkg.dependencies[name], /^\d+\.\d+\.\d+$/);
 });
+test("installing the published dist-only package does not write missing source files", () => {
+  const pkg = JSON.parse(readFileSync(new URL("../../package.json", import.meta.url), "utf8"));
+  assert.equal(pkg.scripts.postinstall, undefined);
+});

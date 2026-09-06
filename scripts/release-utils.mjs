@@ -51,7 +51,10 @@ export async function downloadPackage(metadata, fetcher = globalThis.fetch) {
   const url = new URL(metadata.dist?.tarball);
   if (url.origin !== "https://registry.npmjs.org" || url.username || url.password)
     throw new Error("Unexpected package archive host");
-  const response = await fetcher(url, { signal: globalThis.AbortSignal.timeout(60_000), redirect: "error" });
+  const response = await fetcher(url, {
+    signal: globalThis.AbortSignal.timeout(60_000),
+    redirect: "error",
+  });
   if (!response.ok) throw new Error(`Package download failed: ${response.status}`);
   const bytes = Buffer.from(await response.arrayBuffer());
   verifyIntegrity(bytes, metadata.dist.integrity);
