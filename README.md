@@ -25,32 +25,32 @@ npm install @askbenny/convai-widget-core
 ```html
 <!DOCTYPE html>
 <html>
-<head>
-  <title>ConvAI Widget Demo</title>
-</head>
-<body>
-  <script type="module">
-    import { registerWidget } from '@askbenny/convai-widget-core';
-    
-    // Register the web component
-    registerWidget();
-    
-    // Create and configure the widget
-    const widget = document.createElement('askbenny-convai');
-    widget.setAttribute('agent-id', 'your-agent-id');
-    document.body.appendChild(widget);
-  </script>
-</body>
+  <head>
+    <title>ConvAI Widget Demo</title>
+  </head>
+  <body>
+    <script type="module">
+      import { registerWidget } from "@askbenny/convai-widget-core";
+
+      // Register the web component
+      registerWidget();
+
+      // Create and configure the widget
+      const widget = document.createElement("askbenny-convai");
+      widget.setAttribute("agent-id", "your-agent-id");
+      document.body.appendChild(widget);
+    </script>
+  </body>
 </html>
 ```
 
 ### Custom Tag Name
 
 ```javascript
-import { registerWidget } from '@askbenny/convai-widget-core';
+import { registerWidget } from "@askbenny/convai-widget-core";
 
 // Register with a custom tag name
-registerWidget('my-convai-widget');
+registerWidget("my-convai-widget");
 ```
 
 ## Configuration
@@ -176,11 +176,13 @@ Used for publishing packages to npm registry.
 #### 2. GITHUB_TOKEN (Automatic)
 
 This token is automatically provided by GitHub Actions and doesn't need manual configuration. It's used for:
+
 - Git operations (pushing version tags)
 - Creating GitHub releases
 - Accessing repository content
 
 **Permissions:** The workflow requires these permissions (already configured in `.github/workflows/npm-publish.yml`):
+
 - `contents: write` - For pushing commits and creating releases
 - `packages: write` - For publishing packages
 
@@ -189,12 +191,14 @@ This token is automatically provided by GitHub Actions and doesn't need manual c
 The build process requires several environment variables for server endpoints. Add these as GitHub secrets:
 
 **Server URLs:**
+
 - `VITE_SERVER_URL` - Default server URL
 - `VITE_SERVER_URL_US` - US region server URL
 - `VITE_SERVER_URL_EU_RESIDENCY` - EU region server URL
 - `VITE_SERVER_URL_IN_RESIDENCY` - India region server URL
 
 **WebSocket URLs:**
+
 - `VITE_WEBSOCKET_URL` - Default WebSocket URL
 - `VITE_WEBSOCKET_URL_US` - US region WebSocket URL
 - `VITE_WEBSOCKET_URL_EU_RESIDENCY` - EU region WebSocket URL
@@ -291,3 +295,7 @@ Fixtures intercept Ask Benny bootstrap, widget configuration, and provider socke
 Browser test files run sequentially because their MSW service worker uses a shared
 scope. Existing Ask Benny embed tests remain intact; added tests cover registration,
 client/backend isolation, denied access, fresh authorization, and teardown.
+
+## Widget releases
+
+See [docs/RELEASING.md](docs/RELEASING.md) for version selection, package publishing, automatic dependency/runtime update PRs, initial rollout and rollback. Both embed formats are active and supported.

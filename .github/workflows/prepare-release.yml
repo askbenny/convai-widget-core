@@ -1,0 +1,62 @@
+name: Prepare package release
+on:
+  workflow_dispatch:
+    inputs:
+      bump:
+        description: Version increment for the next stable release
+        type: choice
+        required: true
+        default: patch
+        options: [patch, minor, major]
+permissions:
+  contents: write
+  pull-requests: write
+  actions: write
+concurrency:
+  group: prepare-widget-release
+  cancel-in-progress: false
+jobs:
+  prepare:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      VITE_SERVER_URL_US: https://voice.test
+      VITE_WEBSOCKET_URL_US: wss://voice.test
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.32.1
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          registry-url: https://registry.npmjs.org
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Prepare chosen version
+        id: release
+        env:
+          BUMP: ${{ inputs.bump }}
+        run: node scripts/release.mjs prepare "$BUMP"
+      - run: pnpm install --lockfile-only --ignore-scripts
+      - run: pnpm build
+      - uses: peter-evans/create-pull-request@v8
+        id: pr
+        with:
+          token: ${{ secrets.WIDGET_RELEASE_TOKEN || github.token }}
+          branch: codex/package-release
+          base: main
+          title: "Release v${{ steps.release.outputs.version }}"
+          commit-message: "chore: prepare package release"
+          body: "Publishes the exact version in this PR after merge and successful validation. Both active embed formats remain supported. See docs/RELEASING.md."
+          add-paths: |
+            package.json
+            src/version.ts
+            package-lock.json
+            pnpm-lock.yaml
+      - name: Validate automation branch explicitly
+        if: steps.pr.outputs.pull-request-number && steps.pr.outputs.pull-request-operation != 'none'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh workflow run ci.yml --ref codex/package-release
