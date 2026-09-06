@@ -240,6 +240,9 @@ For issues and questions, please visit our [GitHub repository](https://github.co
 
 ## Partner-hosted website widgets
 
+The Ask Benny embed (`askbenny-convai`) and Partner-branded embed (`website-widget`)
+are both active, fully supported options. Neither is deprecated or requires migration.
+
 `registerWidget()` continues to register `askbenny-convai`. Existing `agent-id`,
 signed URL, event, voice, and chat integrations remain supported. Registration
 is idempotent, so loading another updated copy does not replace an existing tag.
@@ -270,8 +273,8 @@ Both requests omit browser credentials. HTTPS is required except local loopback
 APIs. API authorization, origin checks, enablement, and billing remain server-owned.
 Removing a widget while authorization is pending prevents a late connection.
 
-The embed repository supplies a neutral-only `website.js` entrypoint so an older
-legacy script can load before or after it without duplicate tag registration.
+The embed repository supplies a neutral-only `website.js` entrypoint so the Ask Benny
+script can load before or after it without duplicate tag registration.
 Partners serves that bundle through a connected hostname's `/widget.js` loader.
 
 ### Verification
@@ -284,7 +287,7 @@ pnpm lint
 pnpm build
 ```
 
-Fixtures intercept legacy bootstrap, widget configuration, and provider sockets.
+Fixtures intercept Ask Benny bootstrap, widget configuration, and provider sockets.
 Browser test files run sequentially because their MSW service worker uses a shared
-scope. Existing legacy tests remain intact; added tests cover registration,
+scope. Existing Ask Benny embed tests remain intact; added tests cover registration,
 client/backend isolation, denied access, fresh authorization, and teardown.
