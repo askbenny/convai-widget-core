@@ -21,17 +21,14 @@ export default defineConfig({
     },
     outDir: "dist",
     rollupOptions: {
-      external: id =>
-        id.startsWith("preact") ||
-        id.startsWith("@preact") ||
-        id.startsWith("@elevenlabs"),
+      external: (id) =>
+        id.startsWith("preact") || id.startsWith("@preact") || id.startsWith("@elevenlabs"),
       output: {
         // webrtcCompat must evaluate before the external @elevenlabs/client
         // import (which runs webrtc-adapter shims at import time). Keeping it
         // in its own chunk preserves that ordering; inlined into index.js it
         // would run after the hoisted external imports.
-        manualChunks: id =>
-          id.includes("utils/webrtcCompat") ? "webrtcCompat" : undefined,
+        manualChunks: (id) => (id.includes("utils/webrtcCompat") ? "webrtcCompat" : undefined),
       },
     },
   },
@@ -50,10 +47,8 @@ export default defineConfig({
         {
           browser: "chromium",
           launch: {
-            args: [
-              "--use-fake-device-for-media-stream",
-              "--use-fake-ui-for-media-stream",
-            ],
+            executablePath: process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH,
+            args: ["--use-fake-device-for-media-stream", "--use-fake-ui-for-media-stream"],
           },
           context: {
             permissions: ["microphone"],

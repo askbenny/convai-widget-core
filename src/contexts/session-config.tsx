@@ -1,81 +1,31 @@
-import { Language, SessionConfig, AudioWorkletConfig } from "@elevenlabs/client";
+import { SessionConfig, AudioWorkletConfig } from "@elevenlabs/client";
 import { ReadonlySignal, useComputed, useSignal } from "@preact/signals";
 import { ComponentChildren } from "preact";
 import { createContext } from "preact/compat";
+import { useEffect, useMemo, useRef } from "preact/hooks";
 import { useAttribute } from "./attributes";
 import { useLanguageConfig } from "./language-config";
-import { useServerLocation } from "./server-location";
-import { useEffect } from "preact/hooks";
-
 import { useContextSafely } from "../utils/useContextSafely";
 import { parseBoolAttribute } from "../types/attributes";
-import { useTextOnly, useWebRTC } from "./widget-config";
+import { useTextOnly } from "./widget-config";
+import {
+  applyManagedSession,
+  fetchWidgetConfig,
+  fetchWidgetSession,
+  PublicAgentConfig,
+} from "../utils/managed-session";
 
 type DynamicVariables = Record<string, string | number | boolean>;
+const SessionConfigContext = createContext<{
+  config: ReadonlySignal<SessionConfig>;
+  prepare: (config: SessionConfig) => Promise<SessionConfig>;
+  cancel: () => void;
+  guard: () => () => boolean;
+  presentation: ReadonlySignal<PublicAgentConfig | null>;
+} | null>(null);
 
-interface AgentConfig {
-  agent?: {
-    prompt?: {
-      prompt?: string;
-    };
-    firstMessage?: string;
-    language?: Language;
-  };
-  tts?: {
-    voiceId?: string;
-  };
-  conversation?: {
-    textOnly?: boolean;
-  };
-}
-
-// Add function to fetch signed URL
-async function fetchSignedUrl(agentId: string): Promise<string | null> {
-  try {
-    const response = await fetch(
-      `https://api.askbenny.ca/elevenlabs/signed-url?agentId=${agentId}`
-    );
-    if (!response.ok) {
-      throw new Error(`HTTP error! status: ${response.status}`);
-    }
-    const data = await response.json();
-    return data.body?.signedUrl || null;
-  } catch (error) {
-    console.error("[ConversationalAI] Failed to fetch signed URL:", error);
-    return null;
-  }
-}
-
-// Add function to fetch agent config
-async function fetchAgentConfig(agentId: string): Promise<AgentConfig | null> {
-  try {
-    const response = await fetch(
-      `https://api.askbenny.ca/elevenlabs/agents/config?agentId=${agentId}`
-    );
-    if (!response.ok) {
-      throw new Error(`HTTP error! status: ${response.status}`);
-    }
-    const data = await response.json();
-    return data.body || null;
-  } catch (error) {
-    console.error("[ConversationalAI] Failed to fetch agent config:", error);
-    return null;
-  }
-}
-
-const SessionConfigContext =
-  createContext<ReadonlySignal<SessionConfig> | null>(null);
-
-interface SessionConfigProviderProps {
-  children: ComponentChildren;
-}
-
-export function SessionConfigProvider({
-  children,
-}: SessionConfigProviderProps) {
+export function SessionConfigProvider({ children }: { children: ComponentChildren }) {
   const { language } = useLanguageConfig();
-  const overridePrompt = useAttribute("override-prompt");
-  const overrideLLM = useAttribute("override-llm");
   const overrideSpeed = useAttribute("override-speed");
   const overrideStability = useAttribute("override-stability");
   const overrideSimilarityBoost = useAttribute("override-similarity-boost");
@@ -83,193 +33,154 @@ export function SessionConfigProvider({
   const overrideVoiceId = useAttribute("override-voice-id");
   const overrideTextOnly = useAttribute("override-text-only");
   const userId = useAttribute("user-id");
-
-  // Add state for fetched agent config (moved here to be available for overrides)
-  const fetchedAgentConfig = useSignal<AgentConfig | null>(null);
-  const isLoadingAgentConfig = useSignal(false);
-
-  const overrides = useComputed<SessionConfig["overrides"]>(() => {
-    const baseOverrides: SessionConfig["overrides"] = {
-      agent: {
-        prompt: {
-          prompt: overridePrompt.value,
-        },
-        firstMessage: overrideFirstMessage.value,
-        language: language.value.languageCode,
-      },
-      tts: {
-        voiceId: overrideVoiceId.value,
-        speed: overrideSpeed.value ? parseFloat(overrideSpeed.value) : undefined,
-        stability: overrideStability.value ? parseFloat(overrideStability.value) : undefined,
-        similarityBoost: overrideSimilarityBoost.value ? parseFloat(overrideSimilarityBoost.value) : undefined,
-      },
-      conversation: {
-        textOnly: parseBoolAttribute(overrideTextOnly.value) ?? undefined,
-      },
-    };
-
-    // If we have fetched agent config, merge it with overrides
-    if (fetchedAgentConfig.value) {
-      const config = fetchedAgentConfig.value;
-
-      // Apply fetched config as base, with attribute overrides taking precedence
-      return {
-        agent: {
-          prompt: {
-            prompt: config.agent?.prompt?.prompt || overridePrompt.value,
-            llm: overrideLLM.value,
-          },
-          firstMessage: config.agent?.firstMessage || overrideFirstMessage.value,
-          language: config.agent?.language || language.value.languageCode,
-        },
-        tts: {
-          voiceId: config.tts?.voiceId || overrideVoiceId.value,
-          speed: overrideSpeed.value ? parseFloat(overrideSpeed.value) : undefined,
-          stability: overrideStability.value ? parseFloat(overrideStability.value) : undefined,
-          similarityBoost: overrideSimilarityBoost.value ? parseFloat(overrideSimilarityBoost.value) : undefined,
-        },
-        conversation: {
-          textOnly:
-            !!config.conversation?.textOnly ||
-            (parseBoolAttribute(overrideTextOnly.value) ?? undefined),
-        },
-      };
-    }
-
-    return baseOverrides;
-  });
-
-  const dynamicVariablesJSON = useAttribute("dynamic-variables");
-  const dynamicVariables = useComputed(() => {
-    if (dynamicVariablesJSON.value) {
-      try {
-        return JSON.parse(dynamicVariablesJSON.value) as DynamicVariables;
-      } catch (e: any) {
-        console.error(
-          `[ConversationalAI] Cannot parse dynamic-variables: ${e?.message}`
-        );
-      }
-    }
-
-    return undefined;
-  });
-
-  const rawAudioProcessor = useAttribute("worklet-path-raw-audio-processor");
-  const audioConcatProcessor = useAttribute(
-    "worklet-path-audio-concat-processor"
-  );
-  const libsamplerate = useAttribute("worklet-path-libsamplerate");
-
-  const { webSocketUrl } = useServerLocation();
   const agentId = useAttribute("agent-id");
   const signedUrl = useAttribute("signed-url");
   const environment = useAttribute("environment");
   const textOnly = useTextOnly();
-  const useWebRTCEnabled = useWebRTC();
-
-  // Add state for fetched signed URL
-  const fetchedSignedUrl = useSignal<string | null>(null);
-  const isLoadingSignedUrl = useSignal(false);
-
-  // Fetch signed URL when agentId is available but signedUrl is not.
-  useEffect(() => {
-    if (agentId.value && !signedUrl.value && !fetchedSignedUrl.value && !isLoadingSignedUrl.value) {
-      isLoadingSignedUrl.value = true;
-      fetchSignedUrl(agentId.value).then((url) => {
-        fetchedSignedUrl.value = url;
-        isLoadingSignedUrl.value = false;
-      });
+  const fetched = useSignal<PublicAgentConfig | null>(null);
+  const requestRef = useRef<AbortController | null>(null);
+  const aliveRef = useRef(true);
+  const generationRef = useRef(0);
+  const dynamicVariablesJSON = useAttribute("dynamic-variables");
+  const dynamicVariables = useComputed(() => {
+    try {
+      const value = JSON.parse(dynamicVariablesJSON.value || "{}");
+      return value && typeof value === "object" && !Array.isArray(value)
+        ? (value as DynamicVariables)
+        : {};
+    } catch {
+      return {};
     }
-  }, [agentId.value, signedUrl.value]);
-
-  // Fetch agent config when agentId is available
-  useEffect(() => {
-    if (agentId.value && !fetchedAgentConfig.value && !isLoadingAgentConfig.value) {
-      isLoadingAgentConfig.value = true;
-      fetchAgentConfig(agentId.value).then((config) => {
-        fetchedAgentConfig.value = config;
-        isLoadingAgentConfig.value = false;
-      });
-    }
-  }, [agentId.value]);
-
-  const value = useComputed<SessionConfig | null>(() => {
-    const isWebRTC = useWebRTCEnabled.value;
-    const baseConfig = {
-      dynamicVariables: dynamicVariables.value,
-      overrides: overrides.value,
-      connectionDelay: { default: 300 },
-      textOnly: textOnly.value,
-      userId: userId.value || undefined,
-      environment: environment.value || undefined,
-      libsampleratePath: libsamplerate.value,
-      workletPaths: {
-        rawAudioProcessor: rawAudioProcessor.value,
-        audioConcatProcessor: audioConcatProcessor.value,
-      },
-    } as const satisfies Partial<SessionConfig | AudioWorkletConfig>;
-
-    // If explicit signed URL is provided, use it
-    if (signedUrl.value) {
-      return {
-        signedUrl: signedUrl.value,
-        connectionType: "websocket" as const,
-        ...baseConfig,
-      };
-    }
-
-    // If fetched signed URL is available, use it
-    if (fetchedSignedUrl.value) {
-      return {
-        signedUrl: fetchedSignedUrl.value,
-        connectionType: "websocket" as const,
-        ...baseConfig,
-      };
-    }
-
-    // If agentId is provided but still loading signed URL or agent config, return null to wait
-    if (agentId.value && (isLoadingSignedUrl.value || isLoadingAgentConfig.value)) {
-      return null;
-    }
-
-    // Fallback to agentId-based config
-    if (agentId.value) {
-      if (isWebRTC) {
-        return {
-          agentId: agentId.value,
-          origin: webSocketUrl.value,
-          connectionType: "webrtc" as const,
-          ...baseConfig,
-        };
-      } else {
-        return {
-          agentId: agentId.value,
-          origin: webSocketUrl.value,
-          connectionType: "websocket" as const,
-          ...baseConfig,
-        };
-      }
-    }
-
-    console.error(
-      "[ConversationalAI] Either agent-id or signed-url is required"
-    );
-    return null;
   });
+  const rawAudioProcessor = useAttribute("worklet-path-raw-audio-processor");
+  const audioConcatProcessor = useAttribute("worklet-path-audio-concat-processor");
+  const libsamplerate = useAttribute("worklet-path-libsamplerate");
 
-  if (!value.value) {
-    return null;
-  }
+  useEffect(() => {
+    fetched.value = null;
+    const controller = new AbortController();
+    if (agentId.value && !signedUrl.value) {
+      fetchWidgetConfig(agentId.value, environment.value, controller.signal)
+        .then((config) => {
+          if (!controller.signal.aborted) fetched.value = config;
+        })
+        .catch(() => {
+          /* Session start retries; a loading failure must not hide the widget. */
+        });
+    }
+    return () => {
+      controller.abort();
+      requestRef.current?.abort();
+    };
+  }, [agentId.value, environment.value, signedUrl.value]);
 
-  return (
-    <SessionConfigContext.Provider
-      value={value as ReadonlySignal<SessionConfig>}
-    >
-      {children}
-    </SessionConfigContext.Provider>
+  useEffect(() => {
+    aliveRef.current = true;
+    return () => {
+      aliveRef.current = false;
+      requestRef.current?.abort();
+    };
+  }, []);
+
+  const config = useComputed<SessionConfig>(
+    () =>
+      ({
+        // A placeholder is never passed to the SDK: prepare obtains the session at start.
+        signedUrl: signedUrl.value || "",
+        connectionType: "websocket",
+        dynamicVariables: dynamicVariables.value,
+        overrides: {
+          agent: {
+            firstMessage: overrideFirstMessage.value,
+            language: language.value.languageCode,
+          },
+          tts: {
+            voiceId: overrideVoiceId.value,
+            speed: overrideSpeed.value ? parseFloat(overrideSpeed.value) : undefined,
+            stability: overrideStability.value ? parseFloat(overrideStability.value) : undefined,
+            similarityBoost: overrideSimilarityBoost.value
+              ? parseFloat(overrideSimilarityBoost.value)
+              : undefined,
+          },
+          conversation: {
+            textOnly:
+              fetched.value?.conversation?.textOnly ||
+              (parseBoolAttribute(overrideTextOnly.value) ?? undefined),
+          },
+        },
+        connectionDelay: { default: 300 },
+        textOnly: fetched.value?.conversation?.textOnly || textOnly.value,
+        userId: userId.value || undefined,
+        libsampleratePath: libsamplerate.value,
+        workletPaths: {
+          rawAudioProcessor: rawAudioProcessor.value,
+          audioConcatProcessor: audioConcatProcessor.value,
+        },
+      }) satisfies SessionConfig & Partial<AudioWorkletConfig>
   );
+
+  const value = useMemo(
+    () => ({
+      config,
+      presentation: fetched,
+      cancel: () => {
+        generationRef.current++;
+        requestRef.current?.abort();
+      },
+      guard: () => {
+        const generation = generationRef.current;
+        const id = agentId.peek();
+        const env = environment.peek();
+        const url = signedUrl.peek();
+        return () =>
+          aliveRef.current &&
+          generation === generationRef.current &&
+          id === agentId.peek() &&
+          env === environment.peek() &&
+          url === signedUrl.peek();
+      },
+      prepare: async (requested: SessionConfig): Promise<SessionConfig> => {
+        const id = agentId.peek();
+        const env = environment.peek();
+        const explicitUrl = signedUrl.peek();
+        if (!aliveRef.current) throw new Error("Conversation cancelled.");
+        // Explicit signed sessions remain supported for callers owning session acquisition.
+        if (explicitUrl)
+          return {
+            ...requested,
+            agentId: undefined,
+            conversationToken: undefined,
+            signedUrl: explicitUrl,
+            connectionType: "websocket",
+          };
+        if (!id) throw new Error("A website assistant is required.");
+        const controller = new AbortController();
+        requestRef.current?.abort();
+        requestRef.current = controller;
+        const session = await fetchWidgetSession(id, env, controller.signal);
+        if (
+          controller.signal.aborted ||
+          !aliveRef.current ||
+          id !== agentId.peek() ||
+          env !== environment.peek() ||
+          signedUrl.peek() !== explicitUrl
+        )
+          throw new Error("Conversation cancelled.");
+        return applyManagedSession(requested, session);
+      },
+    }),
+    [config, agentId, environment, signedUrl]
+  );
+
+  return <SessionConfigContext.Provider value={value}>{children}</SessionConfigContext.Provider>;
+}
+export function useSessionConfig() {
+  return useContextSafely(SessionConfigContext).config;
+}
+export function useSessionPreparation() {
+  return useContextSafely(SessionConfigContext);
 }
 
-export function useSessionConfig() {
-  return useContextSafely(SessionConfigContext);
+export function useSessionPresentation() {
+  return useContextSafely(SessionConfigContext).presentation;
 }

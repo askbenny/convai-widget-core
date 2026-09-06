@@ -171,8 +171,27 @@ function isValidAgentId(agentId: string): agentId is keyof typeof AGENTS {
 }
 
 export const Worker = setupWorker(
+  http.get(
+    /https:\/\/api(?:-dev)?\.askbenny\.ca\/elevenlabs\/(?:agents\/config|signed-url)/,
+    ({ request }) => {
+      const url = new URL(request.url);
+      const agentId = url.searchParams.get("agentId") || "";
+      if (!isValidAgentId(agentId)) return new HttpResponse(null, { status: 404 });
+      return HttpResponse.json({
+        body: {
+          schemaVersion: 2,
+          agentId,
+          branchId: `widget-${agentId}`,
+          signedUrl: `${import.meta.env.VITE_WEBSOCKET_URL_US || "wss://api.elevenlabs.io"}/v1/convai/conversation?agent_id=${agentId}&branch_id=widget-${agentId}`,
+          agent: { firstMessage: AGENTS[agentId].first_message },
+          conversation: { textOnly: AGENTS[agentId].text_only },
+          dynamicVariables: { widget_time_iso: new Date().toISOString() },
+        },
+      });
+    }
+  ),
   http.get<{ agentId: string }>(
-    `${import.meta.env.VITE_SERVER_URL_US}/v1/convai/agents/:agentId/widget`,
+    `${import.meta.env.VITE_SERVER_URL_US || "https://api.elevenlabs.io"}/v1/convai/agents/:agentId/widget`,
     ({ params }) => {
       if (isValidAgentId(params.agentId)) {
         return HttpResponse.json({
@@ -185,7 +204,9 @@ export const Worker = setupWorker(
     }
   ),
   ws
-    .link(`${import.meta.env.VITE_WEBSOCKET_URL_US}/v1/convai/conversation`)
+    .link(
+      `${import.meta.env.VITE_WEBSOCKET_URL_US || "wss://api.elevenlabs.io"}/v1/convai/conversation`
+    )
     .addEventListener("connection", async ({ client }) => {
       const agentId = client.url.searchParams.get("agent_id") as keyof typeof AGENTS;
       const config = AGENTS[agentId];

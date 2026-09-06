@@ -21,7 +21,7 @@ import { useContextSafely } from "../utils/useContextSafely";
 import { parseBoolAttribute } from "../types/attributes";
 import { useLanguageConfig } from "./language-config";
 import { useConversation } from "./conversation";
-import { useSessionConfig } from "./session-config";
+import { useSessionConfig, useSessionPresentation } from "./session-config";
 
 const WidgetConfigContext = createContext<ReadonlySignal<WidgetConfig> | null>(
   null
@@ -212,6 +212,7 @@ export function useIsConversationTextOnly() {
 }
 
 export function useFirstMessage() {
+  const presentation = useSessionPresentation();
   const override = useAttribute("override-first-message");
   const config = useWidgetConfig();
   const { language } = useLanguageConfig();
@@ -220,6 +221,7 @@ export function useFirstMessage() {
       override.value ??
       config.value.language_presets?.[language.value.languageCode]
         ?.first_message ??
+      presentation.value?.agent?.firstMessage ??
       config.value.first_message ??
       null
   );

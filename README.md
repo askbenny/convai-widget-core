@@ -237,3 +237,28 @@ MIT © Askbenny
 ## Support
 
 For issues and questions, please visit our [GitHub repository](https://github.com/askbenny/convai-widget-core).
+
+## Managed Ask Benny sessions (1.4.12)
+
+Managed widgets use `agent-id`. The config endpoint supplies safe presentation data;
+the widget requests a fresh signed branch session after terms acceptance, on every
+start/reconnect. It never downloads an agent prompt or falls back to direct
+main-agent access after failed preparation. The backend must support response
+`schemaVersion: 2` before releasing this client.
+
+- Default / `environment="production"`: `https://api.askbenny.ca`.
+- `environment="development"`: `https://api-dev.askbenny.ca`.
+- Other application environments fail explicitly. Provider data residency is separate.
+- Prompt and LLM HTML overrides are no longer applied. Language, greeting, audio
+  controls and text mode remain supported, with provider-side permissions enforced.
+- The public call event runs before session acquisition; managed session identity
+  and safe overrides are applied after it.
+- Explicit `signed-url` consumers own URL freshness. They do not fetch agent config.
+  Prefer `agent-id` for managed widgets to refresh access and time data on every start.
+- Appearance is inherited from the agent's public widget configuration. Safe backend
+  first-message/text settings supplement it; no private branch config is fetched.
+
+Browser tests mock Ask Benny and provider endpoints and reject unhandled HTTP
+requests. Run `npm run lint` and `npx vitest run --browser.headless`. To use an
+installed browser locally, set `PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH` to its executable.
+The publish workflow publishes the reviewed package version without bumping it again.
