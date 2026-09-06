@@ -5,7 +5,7 @@ import { setupWebComponent } from "../mocks/web-component";
 import { Variants } from "../types/config";
 
 describe("Dismiss Button", () => {
-  beforeAll(() => Worker.start({ quiet: true }));
+  beforeAll(() => Worker.start({ quiet: true, onUnhandledRequest: "error" }));
   afterAll(() => Worker.stop());
 
   describe("when dismissible is enabled", () => {
@@ -97,8 +97,10 @@ describe("Dismiss Button", () => {
         dismissible: "true",
         transcript: "true",
         "text-input": "true",
+        "default-expanded": "true",
       });
 
+      await expect.element(page.getByRole("textbox", { name: "Text message input" })).toBeVisible();
       const dismissButton = page.getByRole("button", { name: "Dismiss" });
       await dismissButton.click();
 

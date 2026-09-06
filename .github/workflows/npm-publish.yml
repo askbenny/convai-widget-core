@@ -83,12 +83,11 @@ jobs:
             echo "Version $CURRENT_VERSION is not yet published"
           fi
 
-      - name: Bump version
+      - name: Use reviewed package version
         if: steps.check_npm.outputs.exists == 'false'
         run: |
-          npm version patch -m "chore(release): bump version to %s [skip ci]"
           echo "new_version=$(node -p "require('./package.json').version")" >> $GITHUB_OUTPUT
-        id: bump_version
+        id: release_version
 
       - name: Debug Environment Variables
         if: steps.check_npm.outputs.exists == 'false'
@@ -117,23 +116,18 @@ jobs:
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
-      - name: Push version changes
-        if: steps.check_npm.outputs.exists == 'false'
-        run: |
-          git push origin main --follow-tags
-
       - name: Create GitHub Release
-        if: steps.check_npm.outputs.exists == 'false' && steps.bump_version.outputs.new_version
+        if: steps.check_npm.outputs.exists == 'false' && steps.release_version.outputs.new_version
         uses: actions/create-release@v1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          tag_name: v${{ steps.bump_version.outputs.new_version }}
-          release_name: Release v${{ steps.bump_version.outputs.new_version }}
+          tag_name: v${{ steps.release_version.outputs.new_version }}
+          release_name: Release v${{ steps.release_version.outputs.new_version }}
           body: |
             ## Changes in this release
             - Automated patch release
 
-            See [npm package](https://www.npmjs.com/package/@askbenny/convai-widget-core/v/${{ steps.bump_version.outputs.new_version }})
+            See [npm package](https://www.npmjs.com/package/@askbenny/convai-widget-core/v/${{ steps.release_version.outputs.new_version }})
           draft: false
           prerelease: false

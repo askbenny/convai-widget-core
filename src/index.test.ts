@@ -5,7 +5,7 @@ import { setupWebComponent } from "./mocks/web-component";
 import { Variants } from "./types/config";
 
 describe("askbenny-convai", () => {
-  beforeAll(() => Worker.start({ quiet: true }));
+  beforeAll(() => Worker.start({ quiet: true, onUnhandledRequest: "error" }));
   afterAll(() => Worker.stop());
 
   it("should register a custom component", async () => {
