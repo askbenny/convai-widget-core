@@ -647,6 +647,28 @@ describe("askbenny-convai", () => {
     });
   });
 
+  describe("disable-banner", () => {
+    it("should show the Powered by banner by default", async () => {
+      setupWebComponent({
+        "agent-id": "text_only",
+        variant: "compact",
+      });
+
+      await expect.element(page.getByText("Powered by")).toBeInTheDocument();
+    });
+
+    it("should hide the Powered by banner when disable-banner is true", async () => {
+      setupWebComponent({
+        "agent-id": "text_only",
+        variant: "compact",
+        "disable-banner": "true",
+      });
+
+      await expect.element(page.getByRole("button", { name: "Start a call" })).toBeInTheDocument();
+      await expect.element(page.getByText("Powered by")).not.toBeInTheDocument();
+    });
+  });
+
   describe("agent status", () => {
     it("should render inline tool status when show-agent-status is enabled", async () => {
       setupWebComponent({

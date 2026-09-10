@@ -105,6 +105,7 @@ export function WidgetConfigProvider({ children }: WidgetConfigProviderProps) {
   const useRtc = useAttribute("use-rtc");
   const showAgentStatus = useAttribute("show-agent-status");
   const showConversationId = useAttribute("show-conversation-id");
+  const disableBanner = useAttribute("disable-banner");
 
   const value = useComputed<WidgetConfig | null>(() => {
     if (!fetchedConfig.value) {
@@ -155,6 +156,10 @@ export function WidgetConfigProvider({ children }: WidgetConfigProviderProps) {
       parseBoolAttribute(showConversationId.value) ??
       fetchedConfig.value.show_conversation_id ??
       true;
+    const patchedDisableBanner =
+      parseBoolAttribute(disableBanner.value) ??
+      fetchedConfig.value.disable_banner ??
+      false;
 
     return {
       ...fetchedConfig.value,
@@ -171,6 +176,7 @@ export function WidgetConfigProvider({ children }: WidgetConfigProviderProps) {
       use_rtc: patchedUseRtc,
       show_agent_status: patchedShowAgentStatus,
       show_conversation_id: patchedShowConversationId,
+      disable_banner: patchedDisableBanner,
     };
   });
 
