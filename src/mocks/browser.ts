@@ -43,6 +43,11 @@ export const AGENTS = {
     ...BASIC_CONFIG,
     use_rtc: true,
   },
+  banner_disabled: {
+    ...BASIC_CONFIG,
+    text_only: true,
+    disable_banner: true,
+  },
   fail: BASIC_CONFIG,
   end_call_test: {
     ...BASIC_CONFIG,

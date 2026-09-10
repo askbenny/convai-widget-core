@@ -667,6 +667,26 @@ describe("askbenny-convai", () => {
       await expect.element(page.getByRole("button", { name: "Start a call" })).toBeInTheDocument();
       await expect.element(page.getByText("Powered by")).not.toBeInTheDocument();
     });
+
+    it("should fall back to the fetched disable_banner config when the attribute is omitted", async () => {
+      setupWebComponent({
+        "agent-id": "banner_disabled",
+        variant: "compact",
+      });
+
+      await expect.element(page.getByRole("button", { name: "Start a call" })).toBeInTheDocument();
+      await expect.element(page.getByText("Powered by")).not.toBeInTheDocument();
+    });
+
+    it("should show the Powered by banner when disable-banner is false even if the fetched config disables it", async () => {
+      setupWebComponent({
+        "agent-id": "banner_disabled",
+        variant: "compact",
+        "disable-banner": "false",
+      });
+
+      await expect.element(page.getByText("Powered by")).toBeInTheDocument();
+    });
   });
 
   describe("agent status", () => {
