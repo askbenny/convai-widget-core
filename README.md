@@ -66,6 +66,15 @@ The widget accepts various attributes for customization:
 ></askbenny-convai>
 ```
 
+### Hiding the "Powered by AskBenny" banner
+
+Add `disable-banner="true"` to hide the footer link. When the attribute is omitted,
+the widget falls back to the `disable_banner` value from the agent's widget config.
+
+```html
+<askbenny-convai agent-id="your-agent-id" disable-banner="true"></askbenny-convai>
+```
+
 ## Development
 
 ### Prerequisites
