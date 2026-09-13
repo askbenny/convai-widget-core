@@ -141,9 +141,9 @@ describe("buildDisplayTranscript", () => {
       expected: Array<{ message: string }>;
     }>([
       {
-        description: "preserves distinct agent messages with the same eventId",
+        description: "replaces consecutive partial/final messages with the same eventId",
         input: [msg("agent", "partial", { eventId: 2 }), msg("agent", "full", { eventId: 2 })],
-        expected: [{ message: "partial" }, { message: "full" }],
+        expected: [{ message: "full" }],
       },
       {
         description: "does not group messages with different eventIds",
@@ -341,4 +341,22 @@ it("does not share tool status across conversations reusing event IDs", () => {
   );
   expect(result[0]).toMatchObject({ toolStatus: "loading" });
   expect(result[1]).toMatchObject({ toolStatus: "success" });
+});
+
+it("updates partial replies independently on both sides of a tool boundary", () => {
+  const result = build(
+    [
+      msg("agent", "Checking...", { eventId: 2 }),
+      msg("agent", "Checking availability", { eventId: 2 }),
+      toolReq(2),
+      toolRes(2),
+      msg("agent", "Tuesday...", { eventId: 2 }),
+      msg("agent", "Tuesday is available", { eventId: 2 }),
+    ],
+    { showAgentStatus: true }
+  );
+  expect(result).toHaveLength(2);
+  expect(result[0]).toMatchObject({ message: "Checking availability", toolStatus: "success" });
+  expect(result[1]).toMatchObject({ message: "Tuesday is available" });
+  expect(result[1]).not.toHaveProperty("toolStatus");
 });

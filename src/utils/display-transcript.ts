@@ -84,9 +84,13 @@ export function buildDisplayTranscript(
     }
   }
 
+  let toolBoundary = false;
   for (const entry of entries) {
     // Skip tool entries (consumed into status)
-    if (entry.type === "agent_tool_request" || entry.type === "agent_tool_response") continue;
+    if (entry.type === "agent_tool_request" || entry.type === "agent_tool_response") {
+      toolBoundary = true;
+      continue;
+    }
 
     // Skip empty agent messages unless they have a tool status to display
     if (
@@ -104,7 +108,7 @@ export function buildDisplayTranscript(
     // Filter non-text messages when transcript is disabled
     if (!config.transcriptEnabled && entry.type === "message" && !entry.isText) continue;
 
-    // Fold only empty placeholders; tool-separated replies sharing an ID are distinct.
+    // Preserve ordinary partial/final replacement, but not across a tool boundary.
     const prev = result[result.length - 1];
     if (
       entry.type === "message" &&
@@ -113,13 +117,15 @@ export function buildDisplayTranscript(
       prev.eventId === entry.eventId &&
       prev.role === entry.role &&
       prev.conversationIndex === entry.conversationIndex &&
-      !prev.message.trim()
+      (!toolBoundary || !prev.message.trim())
     ) {
       result[result.length - 1] = entry;
+      toolBoundary = false;
       continue;
     }
 
     result.push(entry);
+    toolBoundary = false;
   }
 
   // Attach one tool status per turn, scoped to its conversation.
