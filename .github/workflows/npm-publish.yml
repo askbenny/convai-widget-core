@@ -10,7 +10,10 @@ permissions:
   packages: write
 
 jobs:
+  validate:
+    uses: ./.github/workflows/ci.yml
   publish:
+    needs: validate
     runs-on: ubuntu-latest
     # Skip workflow if commit message contains [skip ci]
     if: ${{ !contains(github.event.head_commit.message, '[skip ci]') }}
