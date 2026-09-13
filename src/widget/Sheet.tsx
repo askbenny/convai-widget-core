@@ -38,8 +38,7 @@ export function Sheet({ open }: SheetProps) {
   const isConversationTextOnly = useIsConversationTextOnly();
   const config = useWidgetConfig();
   const placement = config.value.placement;
-  const { isDisconnected, startSession, transcript, conversationIndex } =
-    useConversation();
+  const { isDisconnected, startSession, transcript, conversationIndex } = useConversation();
   const firstMessage = useFirstMessage();
   const { currentContent, currentConfig } = useSheetContent();
   const { variant } = useWidgetSize();
@@ -49,12 +48,9 @@ export function Sheet({ open }: SheetProps) {
     return buildDisplayTranscript(transcript.value, {
       showAgentStatus: config.value.show_agent_status ?? false,
       transcriptEnabled: isTextOnly || (config.value.transcript_enabled ?? false),
-      // Prepend first message only when the widget is text-only
-      // (not when it switched to text-only due to user input)
-      firstMessage:
-        isTextOnly && textOnly.value && firstMessage.value
-          ? firstMessage.value
-          : undefined,
+      // Text conversations render the greeting locally, including voice-capable
+      // agents that switched to text after the visitor typed a message.
+      firstMessage: isTextOnly && firstMessage.value ? firstMessage.value : undefined,
       firstMessageConversationIndex: conversationIndex.peek(),
     });
   });
@@ -65,14 +61,10 @@ export function Sheet({ open }: SheetProps) {
   );
   const scrollPinned = useSignal(true);
   const showAvatar = useComputed(() => currentContent.value !== "feedback");
-  const showStatusLabel = useComputed(
-    () => showTranscript.value && !isDisconnected.value
-  );
+  const showStatusLabel = useComputed(() => showTranscript.value && !isDisconnected.value);
 
   const showLanguageSelector = useComputed(
-    () =>
-      currentContent.value !== "feedback" &&
-      (!showTranscript.value || isDisconnected.value)
+    () => currentContent.value !== "feedback" && (!showTranscript.value || isDisconnected.value)
   );
 
   const showConversationModeToggle = useComputed(
@@ -113,14 +105,8 @@ export function Sheet({ open }: SheetProps) {
         />
         <InOutTransition active={currentContent.value === "transcript"}>
           <div className="grow flex flex-col min-h-0 relative transition-opacity duration-300 ease-out data-hidden:opacity-0">
-            <Transcript
-              transcript={filteredTranscript}
-              scrollPinned={scrollPinned}
-            />
-            <SheetActions
-              showTranscript={showTranscript.value}
-              scrollPinned={scrollPinned}
-            />
+            <Transcript transcript={filteredTranscript} scrollPinned={scrollPinned} />
+            <SheetActions showTranscript={showTranscript.value} scrollPinned={scrollPinned} />
           </div>
         </InOutTransition>
         <InOutTransition active={currentContent.value === "feedback"}>

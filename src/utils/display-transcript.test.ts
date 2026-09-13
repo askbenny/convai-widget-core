@@ -141,9 +141,9 @@ describe("buildDisplayTranscript", () => {
       expected: Array<{ message: string }>;
     }>([
       {
-        description: "groups consecutive agent messages with same eventId",
+        description: "preserves distinct agent messages with the same eventId",
         input: [msg("agent", "partial", { eventId: 2 }), msg("agent", "full", { eventId: 2 })],
-        expected: [{ message: "full" }],
+        expected: [{ message: "partial" }, { message: "full" }],
       },
       {
         description: "does not group messages with different eventIds",
@@ -310,4 +310,35 @@ describe("buildDisplayTranscript", () => {
       });
     });
   });
+});
+
+it("preserves text on both sides of a tool call with one status badge", () => {
+  const result = build(
+    [
+      msg("agent", "Checking", { eventId: 2 }),
+      toolReq(2),
+      toolRes(2),
+      msg("agent", "Available", { eventId: 2 }),
+    ],
+    { showAgentStatus: true }
+  );
+  expect(result).toHaveLength(2);
+  expect(result[0]).toMatchObject({ message: "Checking", toolStatus: "success" });
+  expect(result[1]).toMatchObject({ message: "Available" });
+  expect(result[1]).not.toHaveProperty("toolStatus");
+});
+
+it("does not share tool status across conversations reusing event IDs", () => {
+  const result = build(
+    [
+      msg("agent", "First", { eventId: 2 }),
+      toolReq(2),
+      msg("agent", "Second", { eventId: 2, conversationIndex: 1 }),
+      { ...toolReq(2), conversationIndex: 1 },
+      { ...toolRes(2), conversationIndex: 1 },
+    ],
+    { showAgentStatus: true }
+  );
+  expect(result[0]).toMatchObject({ toolStatus: "loading" });
+  expect(result[1]).toMatchObject({ toolStatus: "success" });
 });

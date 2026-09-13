@@ -1,0 +1,37 @@
+name: Validate widget
+on:
+  pull_request:
+  push:
+    branches: [main]
+permissions:
+  contents: read
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.32.1
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm lint
+      - run: pnpm exec playwright install --with-deps chromium
+      - run: pnpm exec vitest run --browser.headless
+      - run: pnpm build
+      - run: npm pack --ignore-scripts --pack-destination /tmp
+      - name: Check the distributable has no install-time source generation
+        run: |
+          node --input-type=module <<'JS'
+          import { execFileSync } from 'node:child_process';
+          import { readFileSync } from 'node:fs';
+          const source = JSON.parse(readFileSync('package.json'));
+          const archive = `/tmp/askbenny-convai-widget-core-${source.version}.tgz`;
+          const pkg = JSON.parse(execFileSync('tar', ['-xOf', archive, 'package/package.json']));
+          if (pkg.scripts?.postinstall || pkg.scripts?.install || pkg.scripts?.preinstall) {
+            throw new Error('The dist-only package must install without source build hooks.');
+          }
+          JS

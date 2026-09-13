@@ -168,3 +168,151 @@ describe("managed session lifecycle", () => {
     }
   );
 });
+
+type SDKConfig = Parameters<typeof Conversation.startSession>[0];
+async function captureSession(attributes: CustomAttributes = {}, initialMessage?: string) {
+  let callbacks!: SDKConfig;
+  vi.spyOn(Conversation, "startSession").mockImplementation(async (config) => {
+    callbacks = config;
+    let open = true;
+    config.onStatusChange?.({ status: "connected" });
+    return {
+      getId: () => "conversation",
+      isOpen: () => open,
+      endSession: async () => {
+        open = false;
+        config.onDisconnect?.({ reason: "user" });
+        config.onStatusChange?.({ status: "disconnected" });
+      },
+      sendUserMessage: () => {},
+    } as unknown as Conversation;
+  });
+  const previous = state;
+  mount(attributes);
+  await vi.waitFor(() => {
+    expect(state).not.toBe(previous);
+    expect(state.presentation.peek()).not.toBeNull();
+  });
+  state.terms.acceptTerms();
+  await state.conversation.startSession(container, initialMessage);
+  return callbacks;
+}
+function agentMessage(config: SDKConfig, message: string, event_id = 2) {
+  config.onMessage?.({ source: "ai", role: "agent", message, event_id });
+}
+function stream(config: SDKConfig, text: string, event_id = 2) {
+  config.onAgentChatResponsePart?.({ type: "start", text: "", event_id });
+  config.onAgentChatResponsePart?.({ type: "delta", text, event_id });
+  config.onAgentChatResponsePart?.({ type: "stop", text: "", event_id });
+}
+function messages() {
+  return state.conversation.transcript
+    .peek()
+    .filter((entry) => entry.type === "message" && entry.role === "agent")
+    .map((entry) => (entry.type === "message" ? entry.message : ""));
+}
+
+describe("upstream transcript fixes with managed sessions", () => {
+  it("keeps the first real reply when the configured greeting is omitted", async () => {
+    const config = await captureSession({ "agent-id": "text_only" });
+    stream(config, "**Actual answer**");
+    agentMessage(config, "Actual answer");
+    expect(messages()).toEqual(["**Actual answer**"]);
+  });
+
+  it("suppresses only the configured greeting event in text mode", async () => {
+    const config = await captureSession({ "agent-id": "text_only" });
+    stream(config, "Agent response", 1);
+    agentMessage(config, "Agent response", 1);
+    agentMessage(config, "Actual answer", 2);
+    expect(messages()).toEqual(["Actual answer"]);
+  });
+
+  it.each(["before-stop", "after-stop"])(
+    "keeps streamed markdown when final text arrives %s",
+    async (timing) => {
+      const config = await captureSession({ "agent-id": "text_only" });
+      config.onAgentChatResponsePart?.({ type: "start", text: "", event_id: 2 });
+      config.onAgentChatResponsePart?.({
+        type: "delta",
+        text: "## Heading\n**Answer**",
+        event_id: 2,
+      });
+      if (timing === "after-stop")
+        config.onAgentChatResponsePart?.({ type: "stop", text: "", event_id: 2 });
+      agentMessage(config, " Heading\nAnswer");
+      if (timing === "before-stop")
+        config.onAgentChatResponsePart?.({ type: "stop", text: "", event_id: 2 });
+      expect(messages()).toEqual(["## Heading\n**Answer**"]);
+    }
+  );
+
+  it.each(["forward", "reverse"])(
+    "matches late tool-turn finals in %s arrival order",
+    async (order) => {
+      const config = await captureSession({ "agent-id": "text_only" });
+      stream(config, "**Checking availability**");
+      config.onAgentToolRequest?.({
+        tool_name: "availability",
+        tool_type: "webhook",
+        tool_call_id: "tool-1",
+        event_id: 2,
+      });
+      config.onAgentToolResponse?.({
+        tool_call_id: "tool-1",
+        is_error: false,
+        event_id: 2,
+        tool_name: "availability",
+        tool_type: "webhook",
+        is_called: true,
+      });
+      stream(config, "**Tuesday is available**");
+      const finals = ["Checking availability", "Tuesday is available"];
+      for (const text of order === "reverse" ? finals.reverse() : finals)
+        agentMessage(config, text);
+      expect(messages()).toEqual(["**Checking availability**", "**Tuesday is available**"]);
+    }
+  );
+
+  it("does not duplicate a final response that arrives before its stream", async () => {
+    const config = await captureSession({ "agent-id": "text_only" });
+    agentMessage(config, "Answer");
+    stream(config, "Answer");
+    agentMessage(config, "Answer");
+    expect(messages()).toEqual(["Answer"]);
+  });
+
+  it("ignores voice chat parts and retains the canonical voice transcript", async () => {
+    const config = await captureSession();
+    stream(config, "partial voice text");
+    agentMessage(config, "Canonical voice text");
+    expect(messages()).toEqual(["Canonical voice text"]);
+    expect(state.conversation.transcript.peek()[0]).toMatchObject({ isText: false });
+  });
+
+  it("refreshes signed access on reconnect and clears pending streams", async () => {
+    let calls = 0;
+    Worker.use(
+      http.get("https://api.askbenny.ca/elevenlabs/signed-url", () =>
+        HttpResponse.json({
+          body: {
+            ...signedBody,
+            signedUrl: `wss://api.elevenlabs.io/v1/convai/conversation?token=${++calls}`,
+          },
+        })
+      )
+    );
+    const config = await captureSession();
+    stream(config, "Unfinished old reply");
+    await state.conversation.endSession();
+    await state.conversation.startSession(container);
+    const sdk = vi.mocked(Conversation.startSession);
+    expect(calls).toBe(2);
+    expect(sdk.mock.calls.map(([options]) => options.signedUrl)).toEqual([
+      "wss://api.elevenlabs.io/v1/convai/conversation?token=1",
+      "wss://api.elevenlabs.io/v1/convai/conversation?token=2",
+    ]);
+    agentMessage(sdk.mock.calls[1][0], "New reply");
+    expect(messages()).toEqual(["New reply"]);
+  });
+});
