@@ -9,6 +9,8 @@
   position: fixed;
   inset: 0;
   z-index: 1000;
+  /* Keep portal positioning local inside host-page CSS container queries. */
+  transform: translate(0);
 
   @apply text-base-primary text-md;
   font-family:

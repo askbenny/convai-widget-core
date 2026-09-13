@@ -1,17 +1,10 @@
 import { Signal, useComputed, useSignal } from "@preact/signals";
-import {
-  KeyboardEventHandler,
-  TargetedEvent,
-  useCallback,
-} from "preact/compat";
+import { KeyboardEventHandler, TargetedEvent, useCallback } from "preact/compat";
 import { Button } from "../components/Button";
 import { SizeTransition } from "../components/SizeTransition";
 import { useConversation } from "../contexts/conversation";
 import { useTextContents } from "../contexts/text-contents";
-import {
-  useIsConversationTextOnly,
-  useTextInputEnabled,
-} from "../contexts/widget-config";
+import { useIsConversationTextOnly, useTextInputEnabled } from "../contexts/widget-config";
 import { cn } from "../utils/cn";
 import { CallButton } from "./CallButton";
 import { TriggerMuteButton } from "./TriggerMuteButton";
@@ -98,8 +91,7 @@ function SheetTextarea({
 }) {
   const text = useTextContents();
   const textOnly = useIsConversationTextOnly();
-  const { isDisconnected, conversationIndex, sendUserActivity } =
-    useConversation();
+  const { isDisconnected, conversationIndex, sendUserActivity } = useConversation();
 
   const handleChange = useCallback(
     (e: TargetedEvent<HTMLTextAreaElement>) => {
@@ -109,7 +101,8 @@ function SheetTextarea({
   );
 
   const handleKeyDown = useCallback<KeyboardEventHandler<HTMLTextAreaElement>>(
-    async e => {
+    async (e) => {
+      if (e.isComposing || e.keyCode === 229) return;
       if (e.key === "Enter" && !e.shiftKey) {
         await onSendMessage(e);
       }
@@ -183,9 +176,7 @@ function SheetButtons({
         <CallButton
           iconOnly
           isDisconnected={isDisconnected.value}
-          disabled={
-            status.value === "disconnecting" || status.value === "connecting"
-          }
+          disabled={status.value === "disconnecting" || status.value === "connecting"}
           className="bg-base text-base-primary hover:bg-base-hover active:bg-base-active"
         />
       </SizeTransition>

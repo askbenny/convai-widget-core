@@ -753,3 +753,69 @@ describe("askbenny-convai", () => {
     });
   });
 });
+
+describe("upstream host-page and input fixes", () => {
+  beforeAll(() => Worker.start({ quiet: true, onUnhandledRequest: "error" }));
+  afterAll(() => Worker.stop());
+
+  it.each([{ isComposing: true }, { keyCode: 229 }])(
+    "keeps IME confirmation in the input (%j)",
+    async (composition) => {
+      const host = setupWebComponent({ "agent-id": "text_only", "default-expanded": "true" });
+      const input = page.getByRole("textbox", { name: "Text message input" });
+      await input.fill("你好");
+      const textarea = host.shadowRoot!.querySelector("textarea")!;
+      textarea.dispatchEvent(
+        new KeyboardEvent("keydown", {
+          key: "Enter",
+          bubbles: true,
+          cancelable: true,
+          ...composition,
+        })
+      );
+      await expect.element(input).toHaveValue("你好");
+      await expect.element(page.getByText("Test terms")).not.toBeInTheDocument();
+      await userEvent.keyboard("{Enter}");
+      await expect.element(page.getByText("Test terms")).toBeInTheDocument();
+    }
+  );
+
+  it("keeps the language menu near its trigger inside a CSS container", async () => {
+    const container = document.createElement("div");
+    container.style.cssText =
+      "container-type:inline-size;position:relative;margin-left:120px;margin-top:80px;width:600px;height:600px";
+    document.body.appendChild(container);
+    try {
+      const host = setupWebComponent({
+        "agent-id": "localized",
+        "text-input": "true",
+        "default-expanded": "true",
+        language: "en",
+      });
+      container.appendChild(host);
+      const trigger = page.getByRole("combobox", { name: "Change language" });
+      await trigger.click();
+      await expect.element(page.getByRole("listbox")).toBeVisible();
+      const button = host.shadowRoot!.querySelector('[role="combobox"]')!;
+      const listbox = host.shadowRoot!.querySelector('[role="listbox"]')!;
+      await vi.waitFor(() => {
+        const a = button.getBoundingClientRect();
+        const b = listbox.getBoundingClientRect();
+        expect(Math.abs((a.left + a.right) / 2 - (b.left + b.right) / 2)).toBeLessThan(5);
+        expect(Math.abs(a.top - b.bottom)).toBeLessThan(15);
+      });
+      await userEvent.keyboard("{Escape}");
+    } finally {
+      container.remove();
+    }
+  });
+
+  it("shows the greeting when a voice-capable agent starts through text", async () => {
+    setupWebComponent({ "agent-id": "basic", "text-input": "true", "default-expanded": "true" });
+    const input = page.getByRole("textbox", { name: "Text message input" });
+    await input.fill("Hello");
+    await userEvent.keyboard("{Enter}");
+    await page.getByRole("button", { name: "Accept" }).click();
+    await expect.element(page.getByText("Agent response", { exact: true })).toBeInTheDocument();
+  });
+});
