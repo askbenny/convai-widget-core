@@ -1,5 +1,9 @@
 # Changes
 
+## 1.4.15
+
+- Keep the widget visible on agents that require authentication. When the unsigned widget-config request is refused (401/403), managed embeds (`agent-id` only) fetch one Ask Benny widget session and retry the request once with its conversation signature. Agents without authentication still make a single unsigned request, a host-supplied `signed-url` is never replaced, and non-authentication failures are not retried.
+
 ## 1.4.14
 
 - Preserve separate replies around tool calls, match late final responses to their streams, and keep streamed markdown formatting.
