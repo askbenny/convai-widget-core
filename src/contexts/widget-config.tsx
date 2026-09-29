@@ -18,6 +18,7 @@ import { useAttribute } from "./attributes";
 import { useServerLocation } from "./server-location";
 
 import { useContextSafely } from "../utils/useContextSafely";
+import { loadWidgetPresentation } from "../utils/widget-presentation";
 import { parseBoolAttribute } from "../types/attributes";
 import { useLanguageConfig } from "./language-config";
 import { useConversation } from "./conversation";
@@ -36,6 +37,7 @@ export function WidgetConfigProvider({ children }: WidgetConfigProviderProps) {
   const agentId = useAttribute("agent-id");
   const overrideConfig = useAttribute("override-config");
   const signedUrl = useAttribute("signed-url");
+  const environment = useAttribute("environment");
   const fetchedConfig = useSignal<WidgetConfig | null>(null);
 
   useSignalEffect(() => {
@@ -66,12 +68,13 @@ export function WidgetConfigProvider({ children }: WidgetConfigProviderProps) {
     }
 
     const abort = new AbortController();
-    fetchConfig(
-      currentAgentId,
-      serverUrl.value,
-      abort.signal,
-      conversationSignature
-    )
+    loadWidgetPresentation({
+      agentId: currentAgentId,
+      serverUrl: serverUrl.value,
+      signal: abort.signal,
+      conversationSignature,
+      environment: environment.value,
+    })
       .then(config => {
         if (!abort.signal.aborted) {
           fetchedConfig.value = config;
@@ -329,23 +332,4 @@ export function useSyntaxTheme() {
     }
     return color.isDark() ? "dark" : "light";
   });
-}
-
-async function fetchConfig(
-  agentId: string,
-  serverUrl: string,
-  signal: AbortSignal,
-  conversationSignature?: string
-): Promise<WidgetConfig> {
-  const response = await fetch(
-    `${serverUrl}/v1/convai/agents/${agentId}/widget${conversationSignature ? `?conversation_signature=${encodeURIComponent(conversationSignature)}` : ""}`,
-    {
-      signal,
-    }
-  );
-  const data = await response.json();
-  if (!data.widget_config) {
-    throw new Error("Response does not contain widget_config");
-  }
-  return data.widget_config;
 }
