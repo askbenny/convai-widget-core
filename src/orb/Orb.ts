@@ -1,35 +1,43 @@
-import fragmentCode from "./OrbShader.frag?raw";
 import vertexCode from "./OrbShader.vert?raw";
+import { DEFAULT_ORB_STYLE, getOrbFragmentShader, OrbStyle } from "./styles";
 
 const POSITION_LOCATION = 0;
 const QUAD_POSITIONS = new Float32Array([-1.0, 1.0, -1.0, -1.0, 1.0, 1.0, 1.0, -1.0]);
 const PERLIN_NOISE = "https://storage.googleapis.com/eleven-public-cdn/images/perlin-noise.png";
 
 export class Orb {
-  private static noiseImage: HTMLImageElement;
+  private static noiseImage?: HTMLImageElement;
 
   private gl: WebGL2RenderingContext;
   private program: WebGLProgram;
+  private style: OrbStyle;
+  private uniforms = new Map<string, WebGLUniformLocation | null>();
   private startTime: number;
-  private targetSpeed = 0;
-  private speed = 0.5;
+  private lastFrame: number;
+  private phase = 0;
+  private inputVolume = 0;
+  private outputVolume = 0;
+  private targetInputVolume = 0;
+  private targetOutputVolume = 0;
   private rafId: number | null = null;
   private resizeObserver?: ResizeObserver;
   private colorA: number[] = [0, 0, 0];
   private colorB: number[] = [0, 0, 0];
   private offsets = new Float32Array(7).map(() => Math.random() * Math.PI * 2);
 
-  public constructor(canvas: HTMLCanvasElement) {
+  public constructor(canvas: HTMLCanvasElement, style: OrbStyle = DEFAULT_ORB_STYLE) {
     const gl = canvas.getContext("webgl2", {
       depth: false,
       stencil: false,
     })!;
 
     this.gl = gl;
-    this.program = this.setupProgram(fragmentCode, vertexCode);
+    this.style = style;
+    this.program = this.setupProgram(getOrbFragmentShader(style), vertexCode);
     if (import.meta.hot) {
-      import.meta.hot.accept("./OrbShader.frag?raw", (module) => {
-        this.program = this.setupProgram(module!.default, vertexCode);
+      import.meta.hot.accept("./styles", (module) => {
+        if (!this.gl || !module) return;
+        this.program = this.setupProgram(module.getOrbFragmentShader(this.style), vertexCode);
       });
     }
 
@@ -46,15 +54,8 @@ export class Orb {
       gl.UNSIGNED_BYTE,
       new Uint8Array([128, 128, 128, 255])
     );
-    if (!Orb.noiseImage) {
-      Orb.noiseImage = new Image();
-      Orb.noiseImage.crossOrigin = "anonymous";
-      Orb.noiseImage.src = PERLIN_NOISE;
-    }
-    if (Orb.noiseImage.complete) {
-      this.copyNoiseImage();
-    } else {
-      Orb.noiseImage.addEventListener("load", this.copyNoiseImage);
+    if (style === "classic") {
+      this.loadNoiseImage();
     }
 
     const positionBuffer = gl.createBuffer();
@@ -88,7 +89,8 @@ export class Orb {
     }
 
     this.startTime = performance.now();
-    this.rafId = requestAnimationFrame(this.render);
+    this.lastFrame = this.startTime;
+    this.rafId = requestAnimationFrame(this.loop);
   }
 
   public dispose() {
@@ -105,6 +107,16 @@ export class Orb {
     this.gl.viewport(0, 0, this.gl.canvas.width, this.gl.canvas.height);
   }
 
+  public setStyle(style: OrbStyle) {
+    if (!this.gl || style === this.style) return;
+
+    this.style = style;
+    this.program = this.setupProgram(getOrbFragmentShader(style), vertexCode);
+    if (style === "classic") {
+      this.loadNoiseImage();
+    }
+  }
+
   public updateColors(a: string, b: string) {
     if (!this.gl) return;
 
@@ -112,14 +124,17 @@ export class Orb {
     this.colorB = this.updateColor("uColor2", b) ?? this.colorB;
   }
 
+  /** Volumes are 0..1 and are smoothed per frame before reaching the shader. */
   public updateVolume(input: number, output: number) {
-    this.targetSpeed = 0.2 + (1 - Math.pow(output - 1, 2)) * 1.8;
-    if (this.targetSpeed > this.speed) {
-      this.speed = this.targetSpeed;
-    }
+    this.targetInputVolume = input;
+    this.targetOutputVolume = output;
+  }
 
-    this.gl.uniform1f(this.gl.getUniformLocation(this.program, "uInputVolume"), input);
-    this.gl.uniform1f(this.gl.getUniformLocation(this.program, "uOutputVolume"), output);
+  private uniform(name: string) {
+    if (!this.uniforms.has(name)) {
+      this.uniforms.set(name, this.gl.getUniformLocation(this.program, name));
+    }
+    return this.uniforms.get(name)!;
   }
 
   private updateColor(name: string, hex: string) {
@@ -129,7 +144,7 @@ export class Orb {
       const b = parseInt(hex.slice(5, 7), 16) / 255;
       // Convert sRGB to linear to match our Three.js implementation
       const color = [Math.pow(r, 2.2), Math.pow(g, 2.2), Math.pow(b, 2.2)];
-      this.gl.uniform3fv(this.gl.getUniformLocation(this.program, name), color);
+      this.gl.uniform3fv(this.uniform(name), color);
       return color;
     } catch (e) {
       console.error(`[ConversationalAI] Failed to parse ${hex} as color:`, e);
@@ -143,25 +158,32 @@ export class Orb {
       throw new Error("Failed to compile shaders");
     }
 
-    this.program = this.gl.createProgram()!;
-    this.gl.attachShader(this.program, fragment);
-    this.gl.attachShader(this.program, vertex);
-    this.gl.linkProgram(this.program);
+    const previous = this.program;
+    const program = this.gl.createProgram()!;
+    this.gl.attachShader(program, fragment);
+    this.gl.attachShader(program, vertex);
+    this.gl.bindAttribLocation(program, POSITION_LOCATION, "position");
+    this.gl.linkProgram(program);
 
-    if (!this.gl.getProgramParameter(this.program, this.gl.LINK_STATUS)) {
+    if (!this.gl.getProgramParameter(program, this.gl.LINK_STATUS)) {
       if (import.meta.env.DEV) {
-        console.error(this.gl.getProgramInfoLog(this.program));
+        console.error(this.gl.getProgramInfoLog(program));
       }
       throw new Error("Failed to link program");
     }
 
-    this.gl.useProgram(this.program);
-    this.gl.uniform1i(this.gl.getUniformLocation(this.program, "uPerlinTexture"), 0);
-    this.gl.uniform1fv(this.gl.getUniformLocation(this.program, "uOffsets"), this.offsets);
-    this.gl.uniform3fv(this.gl.getUniformLocation(this.program, "uColor1"), this.colorA);
-    this.gl.uniform3fv(this.gl.getUniformLocation(this.program, "uColor2"), this.colorB);
+    this.program = program;
+    this.uniforms.clear();
+    this.gl.useProgram(program);
+    this.gl.uniform1i(this.uniform("uPerlinTexture"), 0);
+    this.gl.uniform1fv(this.uniform("uOffsets"), this.offsets);
+    this.gl.uniform3fv(this.uniform("uColor1"), this.colorA);
+    this.gl.uniform3fv(this.uniform("uColor2"), this.colorB);
+    if (previous) {
+      this.gl.deleteProgram(previous);
+    }
 
-    return this.program;
+    return program;
   }
 
   private getShader(type: GLenum, source: string): WebGLShader | null {
@@ -179,8 +201,21 @@ export class Orb {
     return shader;
   }
 
+  private loadNoiseImage() {
+    if (!Orb.noiseImage) {
+      Orb.noiseImage = new Image();
+      Orb.noiseImage.crossOrigin = "anonymous";
+      Orb.noiseImage.src = PERLIN_NOISE;
+    }
+    if (Orb.noiseImage.complete) {
+      this.copyNoiseImage();
+    } else {
+      Orb.noiseImage.addEventListener("load", this.copyNoiseImage);
+    }
+  }
+
   private copyNoiseImage = () => {
-    if (!this.gl) {
+    if (!this.gl || !Orb.noiseImage) {
       return;
     }
 
@@ -199,16 +234,36 @@ export class Orb {
     return (this.gl.canvas as HTMLCanvasElement).toDataURL("image/png");
   };
 
+  /** Draws a single frame. The animation loop runs on its own. */
   public render = () => {
+    if (!this.gl) return;
+
+    const now = performance.now();
+    const dt = Math.min((now - this.lastFrame) / 1000, 0.1);
+    this.lastFrame = now;
+
+    // Fast attack, slow release so the orb swells with syllables and settles gently.
+    const smooth = (current: number, target: number) =>
+      current + (target - current) * (1 - Math.exp(-dt * (target > current ? 18 : 5)));
+    this.inputVolume = smooth(this.inputVolume, this.targetInputVolume);
+    this.outputVolume = smooth(this.outputVolume, this.targetOutputVolume);
+    this.phase += dt * (1 + Math.max(this.inputVolume, this.outputVolume) * 1.5);
+
+    const gl = this.gl;
+    gl.uniform1f(this.uniform("uTime"), (now - this.startTime) / 1000);
+    gl.uniform1f(this.uniform("uPhase"), this.phase);
+    gl.uniform1f(this.uniform("uInputVolume"), this.inputVolume);
+    gl.uniform1f(this.uniform("uOutputVolume"), this.outputVolume);
+    gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+  };
+
+  private loop = () => {
     if (!this.gl) {
       this.rafId = null;
       return;
     }
 
-    const time = (performance.now() - this.startTime) / 1000;
-    this.gl.uniform1f(this.gl.getUniformLocation(this.program, "uTime"), time);
-    this.gl.drawArrays(this.gl.TRIANGLE_STRIP, 0, 4);
-
-    this.rafId = requestAnimationFrame(this.render);
+    this.render();
+    this.rafId = requestAnimationFrame(this.loop);
   };
 }
