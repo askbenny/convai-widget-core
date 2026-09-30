@@ -30,7 +30,7 @@
     "dist"
   ],
   "keywords": [],
-  "author": "ElevenLabs",
+  "author": "Askbenny",
   "license": "MIT",
   "devDependencies": {
     "@preact/preset-vite": "^2.10.1",
