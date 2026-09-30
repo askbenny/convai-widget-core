@@ -1,5 +1,11 @@
 # Changes
 
+## 1.4.16
+
+- New default orb, "glass": a lit glass sphere with slowly folding liquid inside that swells and speeds up with the conversation's audio. It renders from the configured orb colors and no longer loads the noise texture from ElevenLabs' CDN.
+- The orb shader now receives smoothed input and output volume. The previous orb remains available internally as the `classic` style, alongside `halo`, `blob`, `silk`, `vortex` and `pulse`, which can be compared in the dev-only `orb-gallery.html` page.
+- Fix an animation loop leak where each orb color change started an additional render loop.
+
 ## 1.4.15
 
 - Keep the widget visible on agents that require authentication. When the unsigned widget-config request is refused (401/403), managed embeds (`agent-id` only) fetch one Ask Benny widget session and retry the request once with its conversation signature. Agents without authentication still make a single unsigned request, a host-supplied `signed-url` is never replaced, and non-authentication failures are not retried.
