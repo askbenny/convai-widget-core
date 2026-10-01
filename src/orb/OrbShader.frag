@@ -18,7 +18,7 @@ bool drawOval(vec2 polarUv, vec2 polarCenter, float a, float b, bool reverseGrad
     vec2 p = polarUv - polarCenter;
     float oval = (p.x * p.x) / (a * a) + (p.y * p.y) / (b * b);
     
-    float edge = smoothstep(1.0, 1.0 - softness, oval);
+    float edge = 1.0 - smoothstep(1.0 - softness, 1.0, oval);
     
     if (edge > 0.0) {
         float gradient = reverseGradient ? (1.0 - (p.x / a + 1.0) / 2.0) : ((p.x / a + 1.0) / 2.0);

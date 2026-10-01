@@ -26,7 +26,7 @@ void main() {
   col = mix(col, uColor2, smoothstep(0.45, 1.0, f));
 
   // Bright filaments where the liquid folds over itself.
-  float filament = smoothstep(0.05, 0.0, abs(f - 0.6));
+  float filament = 1.0 - smoothstep(0.0, 0.05, abs(f - 0.6));
   col += tint(uColor2, 0.5) * filament * (0.25 + e * 0.5);
 
   // Light from within, stronger while speaking.
