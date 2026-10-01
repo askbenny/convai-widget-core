@@ -1,5 +1,11 @@
 # Changes
 
+## 1.4.17
+
+- Orb shaders only use `smoothstep` with ascending, distinct edges. Reversed edges are undefined in GLSL, so on some GPUs the glass orb's highlights could vanish or render differently. Covers glass, pulse, vortex, blob and classic.
+- Pause the orb's render loop while it is off screen or inside a hidden container, and resume when it is visible again.
+- Poll conversation volume for the orb only while a conversation is connected; the orb settles when the call ends.
+
 ## 1.4.16
 
 - New default orb, "glass": a lit glass sphere with slowly folding liquid inside that swells and speeds up with the conversation's audio. It renders from the configured orb colors and no longer loads the noise texture from ElevenLabs' CDN.

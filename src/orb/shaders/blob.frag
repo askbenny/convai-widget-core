@@ -37,7 +37,8 @@ void main() {
   vec3 bg = mix(tint(uColor2, 0.78), tint(uColor2, 0.5), r);
   bg += blobColor * smoothstep(0.35, 1.0, field) * 0.25;
 
-  float aa = min(fwidth(field), 0.5);
+  // Keep the edges distinct; smoothstep is undefined when they are equal.
+  float aa = clamp(fwidth(field), 1e-4, 0.5);
   float inside = smoothstep(1.0 - aa, 1.0 + aa, field);
 
   outColor = finalize(mix(bg, lit, inside));

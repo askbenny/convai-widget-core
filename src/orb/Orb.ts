@@ -20,7 +20,9 @@ export class Orb {
   private targetInputVolume = 0;
   private targetOutputVolume = 0;
   private rafId: number | null = null;
+  private visible = true;
   private resizeObserver?: ResizeObserver;
+  private visibilityObserver?: IntersectionObserver;
   private colorA: number[] = [0, 0, 0];
   private colorB: number[] = [0, 0, 0];
   private offsets = new Float32Array(7).map(() => Math.random() * Math.PI * 2);
@@ -88,9 +90,30 @@ export class Orb {
       }
     }
 
+    // Pause drawing while the orb is off screen or inside a hidden container.
+    if (typeof IntersectionObserver !== "undefined") {
+      this.visibilityObserver = new IntersectionObserver((entries) => {
+        this.setVisible(entries[entries.length - 1]?.isIntersecting ?? true);
+      });
+      this.visibilityObserver.observe(canvas);
+    }
+
     this.startTime = performance.now();
     this.lastFrame = this.startTime;
     this.rafId = requestAnimationFrame(this.loop);
+  }
+
+  private setVisible(visible: boolean) {
+    if (!this.gl || visible === this.visible) return;
+
+    this.visible = visible;
+    if (!visible) {
+      if (this.rafId !== null) cancelAnimationFrame(this.rafId);
+      this.rafId = null;
+    } else if (this.rafId === null) {
+      this.lastFrame = performance.now();
+      this.rafId = requestAnimationFrame(this.loop);
+    }
   }
 
   public dispose() {
@@ -99,6 +122,7 @@ export class Orb {
     }
 
     this.resizeObserver?.disconnect();
+    this.visibilityObserver?.disconnect();
     this.gl = null as unknown as WebGL2RenderingContext;
     this.program = null as unknown as WebGLProgram;
   }
@@ -258,7 +282,7 @@ export class Orb {
   };
 
   private loop = () => {
-    if (!this.gl) {
+    if (!this.gl || !this.visible) {
       this.rafId = null;
       return;
     }

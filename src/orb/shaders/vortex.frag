@@ -18,7 +18,7 @@ void main() {
 
   float coreRadius = 0.16 + e * 0.1;
   col += tint(uColor2, 0.55) * exp(-pow(max(r - coreRadius, 0.0) * 6.0, 1.5)) * (0.45 + e * 0.6);
-  col += tint(uColor2, 0.85) * smoothstep(coreRadius, 0.0, r) * 0.6;
+  col += tint(uColor2, 0.85) * (1.0 - smoothstep(0.0, coreRadius, r)) * 0.6;
 
   outColor = finalize(col);
 }

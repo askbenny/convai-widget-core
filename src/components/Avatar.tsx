@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "preact/compat";
 import { useAvatarConfig } from "../contexts/avatar-config";
 import { useConversation } from "../contexts/conversation";
 import { Orb } from "../orb/Orb";
+import { followConversationVolume } from "../orb/volume";
 import { clsx } from "clsx";
 
 const SIZE_CLASSES = {
@@ -84,8 +85,7 @@ export function Avatar({ size = "sm", className }: AvatarProps) {
 
 function OrbCanvas({ color1, color2 }: { color1: string; color2: string }) {
   const { canvasUrl } = useAvatarConfig();
-  const { getInputVolume, getOutputVolume, isSpeaking, isDisconnected } =
-    useConversation();
+  const conversation = useConversation();
   const [orb, setOrb] = useState<Orb | null>(null);
   useEffect(() => {
     if (orb) {
@@ -95,26 +95,10 @@ function OrbCanvas({ color1, color2 }: { color1: string; color2: string }) {
     }
   }, [orb, color1, color2]);
 
-  // Feed the voice into the shader: the agent's volume while it speaks,
-  // the user's volume while it listens.
-  useEffect(() => {
-    if (!orb) return;
-
-    let id: number;
-    function update() {
-      if (isDisconnected.peek()) {
-        orb!.updateVolume(0, 0);
-      } else if (isSpeaking.peek()) {
-        orb!.updateVolume(0, getOutputVolume());
-      } else {
-        orb!.updateVolume(getInputVolume(), 0);
-      }
-      id = requestAnimationFrame(update);
-    }
-    update();
-
-    return () => cancelAnimationFrame(id);
-  }, [orb]);
+  useEffect(
+    () => (orb ? followConversationVolume(orb, conversation) : undefined),
+    [orb]
+  );
 
   const setupOrb = useCallback(
     (canvas: HTMLCanvasElement | null) => {
