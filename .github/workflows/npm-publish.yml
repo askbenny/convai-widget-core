@@ -8,6 +8,8 @@ on:
 permissions:
   contents: write
   packages: write
+  # Lets npm sign a provenance attestation for each release.
+  id-token: write
 
 jobs:
   validate:
@@ -29,7 +31,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
-          node-version: "20"
+          node-version: "24.x"
           registry-url: "https://registry.npmjs.org"
 
       - name: Install pnpm
@@ -115,7 +117,7 @@ jobs:
 
       - name: Publish to NPM
         if: steps.check_npm.outputs.exists == 'false'
-        run: npm publish --access public
+        run: npm publish --provenance --access public
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 

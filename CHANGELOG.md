@@ -1,5 +1,11 @@
 # Changes
 
+## 1.4.18
+
+- Security: update Preact to 10.29.8, past the JSON VNode injection advisory (GHSA-36hm-qxxp-pg3m, fixed in 10.28.2). Preact is the only runtime dependency that changes.
+- Build and test tooling: vite 7.3.7, vitest and @vitest/browser 3.2.7, refreshed development dependencies.
+- Releases are built on Node 24 and published with an npm provenance attestation.
+
 ## 1.4.17
 
 - Orb shaders only use `smoothstep` with ascending, distinct edges. Reversed edges are undefined in GLSL, so on some GPUs the glass orb's highlights could vanish or render differently. Covers glass, pulse, vortex, blob and classic.
