@@ -8,7 +8,8 @@ on:
 permissions:
   contents: write
   packages: write
-  # Lets npm sign a provenance attestation for each release.
+  # npm trusted publishing: GitHub's OIDC token authenticates the publish (no
+  # stored npm token) and npm signs a provenance attestation for each release.
   id-token: write
 
 jobs:
@@ -33,6 +34,10 @@ jobs:
         with:
           node-version: "24.x"
           registry-url: "https://registry.npmjs.org"
+
+      # Trusted publishing needs npm 11.5.1 or later.
+      - name: Update npm
+        run: npm install -g npm@^11.5.1 && npm --version
 
       - name: Install pnpm
         uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4
@@ -117,9 +122,9 @@ jobs:
 
       - name: Publish to NPM
         if: steps.check_npm.outputs.exists == 'false'
+        # Authenticates through the trusted publisher configured on npmjs.com
+        # (askbenny/convai-widget-core, workflow npm-publish.yml); no npm token.
         run: npm publish --provenance --access public
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
       - name: Create GitHub Release
         if: steps.check_npm.outputs.exists == 'false' && steps.release_version.outputs.new_version
