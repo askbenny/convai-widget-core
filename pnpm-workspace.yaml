@@ -5,3 +5,8 @@ packages:
 ignoredBuiltDependencies:
   - esbuild
   - msw
+
+overrides:
+  # vite's optional yaml peer (dev/build only): 2.8.0 is affected by a
+  # stack-overflow advisory on deeply nested collections, fixed in 2.8.3.
+  "yaml@>=2.0.0 <2.8.3": "^2.8.3"
