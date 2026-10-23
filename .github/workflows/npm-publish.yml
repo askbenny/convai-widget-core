@@ -124,7 +124,7 @@ jobs:
         if: steps.check_npm.outputs.exists == 'false'
         # Authenticates through the trusted publisher configured on npmjs.com
         # (askbenny/convai-widget-core, workflow npm-publish.yml); no npm token.
-        run: npm publish --provenance --access public --loglevel verbose
+        run: npm publish --provenance --access public
 
       - name: Create GitHub Release
         if: steps.check_npm.outputs.exists == 'false' && steps.release_version.outputs.new_version

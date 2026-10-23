@@ -21,7 +21,6 @@ jobs:
                   echo "VITE_WEBSOCKET_URL_US is: ${{ secrets.VITE_WEBSOCKET_URL_US != '' && 'SET' || 'NOT SET' }}"
                   echo "VITE_WEBSOCKET_URL_EU_RESIDENCY is: ${{ secrets.VITE_WEBSOCKET_URL_EU_RESIDENCY != '' && 'SET' || 'NOT SET' }}"
                   echo "VITE_WEBSOCKET_URL_IN_RESIDENCY is: ${{ secrets.VITE_WEBSOCKET_URL_IN_RESIDENCY != '' && 'SET' || 'NOT SET' }}"
-                  echo "NPM_TOKEN is: ${{ secrets.NPM_TOKEN != '' && 'SET' || 'NOT SET' }}"
 
             - name: Test Environment Variables in Build
               env:
