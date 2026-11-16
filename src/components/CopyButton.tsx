@@ -29,7 +29,5 @@ export function CopyButton({ copyText, children }: CopyButtonProps) {
     }
   }, []);
 
-  return (
-    <Button onClick={handleClick}>{copied ? text.copied : children}</Button>
-  );
+  return <Button onClick={handleClick}>{copied ? text.copied : children}</Button>;
 }

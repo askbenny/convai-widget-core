@@ -1,6 +1,5 @@
-/// <reference types="@vitest/browser/providers/playwright" />
-
 import preact from "@preact/preset-vite";
+import { playwright } from "@vitest/browser-playwright";
 import { defineConfig } from "vitest/config";
 import analyzer from "vite-bundle-analyzer";
 import tailwindcss from "@tailwindcss/vite";
@@ -20,7 +19,7 @@ export default defineConfig({
       formats: ["es"],
     },
     outDir: "dist",
-    rollupOptions: {
+    rolldownOptions: {
       external: (id) =>
         id.startsWith("preact") || id.startsWith("@preact") || id.startsWith("@elevenlabs"),
       output: {
@@ -41,18 +40,19 @@ export default defineConfig({
   test: {
     name: "ConvAI Widget Tests",
     browser: {
-      provider: "playwright",
       enabled: true,
       instances: [
         {
           browser: "chromium",
-          launch: {
-            executablePath: process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH,
-            args: ["--use-fake-device-for-media-stream", "--use-fake-ui-for-media-stream"],
-          },
-          context: {
-            permissions: ["microphone"],
-          },
+          provider: playwright({
+            launchOptions: {
+              executablePath: process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH,
+              args: ["--use-fake-device-for-media-stream", "--use-fake-ui-for-media-stream"],
+            },
+            contextOptions: {
+              permissions: ["microphone"],
+            },
+          }),
         },
       ],
     },

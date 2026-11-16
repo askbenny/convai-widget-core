@@ -1,10 +1,4 @@
-import {
-  computed,
-  ReadonlySignal,
-  useComputed,
-  useSignal,
-  useSignalEffect,
-} from "@preact/signals";
+import { computed, ReadonlySignal, useComputed, useSignal, useSignalEffect } from "@preact/signals";
 import { ComponentChildren } from "preact";
 import { createContext, useMemo, useRef } from "preact/compat";
 import { useWidgetConfig } from "./widget-config";
@@ -29,9 +23,7 @@ export function AudioConfigProvider({ children }: AudioConfigProviderProps) {
   const widgetConfig = useWidgetConfig();
   const { isTextMode } = useConversationMode();
   const { setMicMuted, status } = useConversation();
-  const isMutingEnabled = useComputed(
-    () => widgetConfig.value.mic_muting_enabled ?? false
-  );
+  const isMutingEnabled = useComputed(() => widgetConfig.value.mic_muting_enabled ?? false);
   const isMuted = useSignal(false);
   const prevMuteStateRef = useRef<boolean | null>(null);
 
@@ -79,11 +71,7 @@ export function AudioConfigProvider({ children }: AudioConfigProviderProps) {
     []
   );
 
-  return (
-    <AudioConfigContext.Provider value={value}>
-      {children}
-    </AudioConfigContext.Provider>
-  );
+  return <AudioConfigContext.Provider value={value}>{children}</AudioConfigContext.Provider>;
 }
 
 export function useAudioConfig() {

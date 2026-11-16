@@ -32,8 +32,7 @@ function useDownloadImage({
       const urlPath = new URL(src.toString(), window.location.origin).pathname;
       const originalFilename = urlPath.split("/").pop() || "";
       const hasExtension =
-        originalFilename.includes(".") &&
-        originalFilename.split(".").pop()?.length! <= 4;
+        originalFilename.includes(".") && originalFilename.split(".").pop()?.length! <= 4;
 
       let filename = "";
 
@@ -79,13 +78,7 @@ type ImageComponentProps = DetailedHTMLProps<
 > &
   ExtraProps;
 
-export const ImageComponent = ({
-  node,
-  className,
-  src,
-  alt,
-  ...props
-}: ImageComponentProps) => {
+export const ImageComponent = ({ node, className, src, alt, ...props }: ImageComponentProps) => {
   const { downloadImage, disabled } = useDownloadImage({
     src: src?.toString() || "",
     alt: alt?.toString(),

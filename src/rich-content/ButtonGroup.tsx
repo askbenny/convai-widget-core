@@ -1,0 +1,76 @@
+import { Button } from "../components/Button";
+import { useConversation } from "../contexts/conversation";
+
+export interface MessageButton {
+  type: "message";
+  label: string;
+  message: string;
+}
+
+export interface LinkButton {
+  type: "link";
+  label: string;
+  link: string;
+}
+
+export type RichContentButton = MessageButton | LinkButton;
+
+export interface ButtonGroupProps {
+  buttons: RichContentButton[];
+  richContentId?: string;
+}
+
+export function ButtonGroup({ buttons, richContentId }: ButtonGroupProps) {
+  const {
+    sendUserMessage,
+    startSession,
+    continueNavigationCall,
+    pendingNavigationResume,
+    isDisconnected,
+    status,
+    isWaitingForAgent,
+  } = useConversation();
+  const disabled =
+    (status.value !== "connected" && !isDisconnected.value) || isWaitingForAgent.value;
+
+  if (buttons.length === 0) return null;
+
+  return (
+    <div className="flex flex-wrap gap-2">
+      {buttons.map((button, index) =>
+        button.type === "link" ? (
+          <Button
+            key={index}
+            as="a"
+            variant="outline"
+            href={button.link}
+            truncate={false}
+            className="min-h-8 py-1 px-1.5"
+          >
+            {button.label}
+          </Button>
+        ) : (
+          <Button
+            key={index}
+            variant="outline"
+            truncate={false}
+            className="min-h-8 py-1 px-1.5"
+            disabled={disabled}
+            onClick={(e) => {
+              const attribution = { richContentId };
+              if (pendingNavigationResume.value) {
+                void continueNavigationCall(e.currentTarget, button.message, attribution);
+              } else if (isDisconnected.value) {
+                void startSession(e.currentTarget, button.message, attribution);
+              } else {
+                sendUserMessage(button.message, attribution);
+              }
+            }}
+          >
+            {button.label}
+          </Button>
+        )
+      )}
+    </div>
+  );
+}

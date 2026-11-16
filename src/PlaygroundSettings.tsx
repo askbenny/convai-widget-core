@@ -20,26 +20,30 @@ export function usePlaygroundSettings() {
   const [textOnly, setTextOnly] = useState(false);
   const [alwaysExpanded, setAlwaysExpanded] = useState(false);
   const [dismissible, setDismissible] = useState(false);
+  const [endConfirmation, setEndConfirmation] = useState(false);
   const [showAgentStatus, setShowAgentStatus] = useState(false);
+  const [showResizeButton, setShowResizeButton] = useState(true);
+  const [mobileFullscreen, setMobileFullscreen] = useState(true);
+  const [defaultSizeExpanded, setDefaultSizeExpanded] = useState(false);
+  const [pageLayout, setPageLayout] = useState(false);
+  const [transcriptSpeechSync, setTranscriptSpeechSync] = useState(true);
+  const [showLanguageSelectorOnTrigger, setShowLanguageSelectorOnTrigger] = useState(true);
   const [dynamicVariablesStr, setDynamicVariablesStr] = useState("");
   const [expanded, setExpanded] = useState(false);
+  const [allowEvents, setAllowEvents] = useState(false);
   const [overrideFirstMessage, setOverrideFirstMessage] = useState(false);
-  const [firstMessage, setFirstMessage] = useState(
-    "Hi, how can I help you today?"
-  );
+  const [firstMessage, setFirstMessage] = useState("Hi, how can I help you today?");
 
   const dynamicVariables = useMemo(
     () =>
-      dynamicVariablesStr
-        .split("\n")
-        .reduce<Record<string, string>>((acc, expr) => {
-          if (!expr) return acc;
-          const [name, ...rest] = expr.split("=");
-          if (name) {
-            return { ...acc, [name]: rest.join("=") };
-          }
-          return acc;
-        }, {}),
+      dynamicVariablesStr.split("\n").reduce<Record<string, string>>((acc, expr) => {
+        if (!expr) return acc;
+        const [name, ...rest] = expr.split("=");
+        if (name) {
+          return { ...acc, [name]: rest.join("=") };
+        }
+        return acc;
+      }, {}),
     [dynamicVariablesStr]
   );
 
@@ -60,10 +64,26 @@ export function usePlaygroundSettings() {
     setTextOnly,
     alwaysExpanded,
     setAlwaysExpanded,
+    allowEvents,
+    setAllowEvents,
     dismissible,
     setDismissible,
+    endConfirmation,
+    setEndConfirmation,
     showAgentStatus,
     setShowAgentStatus,
+    showResizeButton,
+    setShowResizeButton,
+    mobileFullscreen,
+    setMobileFullscreen,
+    defaultSizeExpanded,
+    setDefaultSizeExpanded,
+    pageLayout,
+    setPageLayout,
+    transcriptSpeechSync,
+    setTranscriptSpeechSync,
+    showLanguageSelectorOnTrigger,
+    setShowLanguageSelectorOnTrigger,
     dynamicVariablesStr,
     setDynamicVariablesStr,
     dynamicVariables,
@@ -104,9 +124,7 @@ export function PlaygroundSettingsPanel({
         Placement
         <select
           value={state.placement}
-          onChange={(e) =>
-            state.setPlacement(parsePlacement(e.currentTarget.value))
-          }
+          onChange={(e) => state.setPlacement(parsePlacement(e.currentTarget.value))}
         >
           {Placements.map((placement) => (
             <option key={placement} value={placement}>
@@ -166,10 +184,74 @@ export function PlaygroundSettingsPanel({
       <label>
         <input
           type="checkbox"
+          checked={state.endConfirmation}
+          onChange={(e) => state.setEndConfirmation(e.currentTarget.checked)}
+        />{" "}
+        End confirmation
+      </label>
+      <label>
+        <input
+          type="checkbox"
+          checked={state.allowEvents}
+          onChange={(e) => state.setAllowEvents(e.currentTarget.checked)}
+        />{" "}
+        Allow events
+      </label>
+      <label>
+        <input
+          type="checkbox"
           checked={state.showAgentStatus}
           onChange={(e) => state.setShowAgentStatus(e.currentTarget.checked)}
         />{" "}
         Show agent status
+      </label>
+      <label>
+        <input
+          type="checkbox"
+          checked={state.showResizeButton}
+          onChange={(e) => state.setShowResizeButton(e.currentTarget.checked)}
+        />{" "}
+        Show resize button
+      </label>
+      <label>
+        <input
+          type="checkbox"
+          checked={state.mobileFullscreen}
+          onChange={(e) => state.setMobileFullscreen(e.currentTarget.checked)}
+        />{" "}
+        Mobile fullscreen
+      </label>
+      <label>
+        <input
+          type="checkbox"
+          checked={state.defaultSizeExpanded}
+          onChange={(e) => state.setDefaultSizeExpanded(e.currentTarget.checked)}
+        />{" "}
+        Start at expanded size
+      </label>
+      <label>
+        <input
+          type="checkbox"
+          checked={state.pageLayout}
+          onChange={(e) => state.setPageLayout(e.currentTarget.checked)}
+        />{" "}
+        Page layout
+      </label>
+      <label>
+        <input
+          type="checkbox"
+          checked={state.transcriptSpeechSync}
+          onChange={(e) => state.setTranscriptSpeechSync(e.currentTarget.checked)}
+        />{" "}
+        Transcript speech sync
+      </label>
+      <label>
+        <input
+          type="checkbox"
+          checked={state.showLanguageSelectorOnTrigger}
+          onChange={(e) => state.setShowLanguageSelectorOnTrigger(e.currentTarget.checked)}
+        />{" "}
+        Show language selector on trigger
       </label>
       <label>
         Dynamic variables (i.e., new-line separated name=value)
@@ -185,9 +267,7 @@ export function PlaygroundSettingsPanel({
             <input
               type="checkbox"
               checked={state.overrideFirstMessage}
-              onChange={(e) =>
-                state.setOverrideFirstMessage(e.currentTarget.checked)
-              }
+              onChange={(e) => state.setOverrideFirstMessage(e.currentTarget.checked)}
             />{" "}
             Override first message
           </span>
@@ -207,9 +287,7 @@ export function PlaygroundSettingsPanel({
         Server Location
         <select
           value={state.location}
-          onChange={(e) =>
-            state.setLocation(parseLocation(e.currentTarget.value))
-          }
+          onChange={(e) => state.setLocation(parseLocation(e.currentTarget.value))}
         >
           {["us", "global", "eu-residency", "in-residency"].map((location) => (
             <option key={location} value={location}>

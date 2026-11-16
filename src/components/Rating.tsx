@@ -7,13 +7,7 @@ import { Icon, type IconName } from "./Icon";
 const generateRatingValues = (min: number, max: number): number[] =>
   Array.from({ length: max - min + 1 }, (_, i) => i + min);
 
-const RatingIcon = ({
-  isFilled,
-  iconName,
-}: {
-  isFilled: boolean;
-  iconName: IconName;
-}) => {
+const RatingIcon = ({ isFilled, iconName }: { isFilled: boolean; iconName: IconName }) => {
   return (
     <span
       className={clsx(
@@ -155,7 +149,7 @@ export const Rating = ({
       className="flex no-wrap cursor-pointer"
       onMouseLeave={handleMouseLeave}
     >
-      {stars.map(starValue => (
+      {stars.map((starValue) => (
         <RatingButton
           key={starValue}
           value={starValue}
@@ -184,12 +178,8 @@ export function RatingResult({
 }) {
   const values = generateRatingValues(min, max);
   return (
-    <div
-      className="flex no-wrap"
-      role="img"
-      aria-label={`Rating: ${rating} out of ${max}`}
-    >
-      {values.map(value => (
+    <div className="flex no-wrap" role="img" aria-label={`Rating: ${rating} out of ${max}`}>
+      {values.map((value) => (
         <RatingIcon key={value} isFilled={rating >= value} iconName={icon} />
       ))}
     </div>

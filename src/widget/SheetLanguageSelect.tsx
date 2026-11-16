@@ -7,10 +7,7 @@ import { clsx } from "clsx";
 import { LanguageSelect } from "./LanguageSelect";
 import { useTextContents } from "../contexts/text-contents";
 
-export function SheetLanguageSelect({
-  className,
-  ...rest
-}: SelectTriggerProps) {
+export function SheetLanguageSelect({ className, ...rest }: SelectTriggerProps) {
   const text = useTextContents();
   const { language, showPicker } = useLanguageConfig();
   if (!showPicker.value) {

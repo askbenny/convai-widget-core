@@ -7,6 +7,20 @@ export function parseVariant(variant: string | undefined): Variant {
   return Variants.includes(variant as Variant) ? (variant as Variant) : Variants[0];
 }
 
+export const Layouts = ["default", "page"] as const;
+export type Layout = (typeof Layouts)[number];
+
+export function parseLayout(layout: string | undefined): Layout {
+  return Layouts.includes(layout as Layout) ? (layout as Layout) : Layouts[0];
+}
+
+export const DefaultSizes = ["compact", "expanded"] as const;
+export type DefaultSize = (typeof DefaultSizes)[number];
+
+export function parseDefaultSize(size: string | undefined): DefaultSize {
+  return DefaultSizes.includes(size as DefaultSize) ? (size as DefaultSize) : DefaultSizes[0];
+}
+
 export const Placements = [
   "top-left",
   "top",
@@ -23,6 +37,11 @@ export function parsePlacement(placement: string | undefined): Placement {
 export type FeedbackMode = "none" | "during" | "end";
 export type FeedbackType = "rating";
 export type SyntaxHighlightTheme = "light" | "dark";
+
+export type FirstMessageRichContent = {
+  component: string;
+  props: unknown;
+};
 
 export interface AllowlistItem {
   hostname: string;
@@ -41,8 +60,8 @@ export interface WidgetConfig {
   } | null;
   language: Language;
   supported_language_overrides?: Language[];
-  terms_html?: string;
-  terms_text?: string;
+  terms_html?: string | null;
+  terms_text?: string | null;
   terms_key?: string;
   mic_muting_enabled: boolean;
   transcript_enabled: boolean;
@@ -59,8 +78,9 @@ export interface WidgetConfig {
       {
         text_contents?: Partial<TextContents>;
         first_message?: string;
-        terms_html?: string;
-        terms_text?: string;
+        first_message_rich_content?: FirstMessageRichContent | null;
+        terms_html?: string | null;
+        terms_text?: string | null;
         terms_key?: string;
       }
     >
@@ -75,6 +95,19 @@ export interface WidgetConfig {
   conversation_mode_toggle_enabled?: boolean;
   show_agent_status?: boolean;
   show_conversation_id?: boolean;
+  file_input_config?: {
+    enabled?: boolean;
+    max_files_per_conversation?: number;
+  };
+  show_resize_button?: boolean;
+  mobile_fullscreen?: boolean;
+  default_size?: DefaultSize;
+  expand_on_carousel?: boolean;
+  layout?: Layout;
+  transcript_speech_sync_enabled?: boolean;
+  end_confirmation_enabled?: boolean;
+  show_language_selector_on_trigger?: boolean;
+  first_message_rich_content?: FirstMessageRichContent | null;
 }
 
 export type AvatarConfig =
@@ -95,13 +128,17 @@ export type AvatarConfig =
 export const DefaultTextContents = {
   main_label: "Need help?",
   start_call: "Start a call",
-  start_chat: "Start a chat",
+  start_chat: "Message",
   send_message: "Send",
   new_call: "New call",
+  resume_call: "Resume talking?",
   end_call: "End",
+  end_chat: "End chat",
   mute_microphone: "Mute microphone",
   text_mode: "Switch to text mode",
   voice_mode: "Switch to voice mode",
+  voice_mode_label: "Voice",
+  text_mode_label: "Text",
   switched_to_text_mode: "Switched to text mode",
   switched_to_voice_mode: "Switched to voice mode",
   change_language: "Change language",
@@ -110,11 +147,23 @@ export const DefaultTextContents = {
   copied: "Copied!",
   accept_terms: "Accept",
   dismiss_terms: "Cancel",
+  end_chat_confirmation_title: "End this chat?",
+  end_chat_confirmation_description:
+    "You won't be able to send more messages in this conversation. You can start a new one at any time.",
+  end_call_confirmation_title: "End this call?",
+  end_call_confirmation_description:
+    "The agent will stop listening. You can start a new call at any time.",
+  end_call_confirm: "End call",
+  cancel_end_confirmation: "Cancel",
 
   listening_status: "Listening",
   speaking_status: "Talk to interrupt",
   connecting_status: "Connecting",
+  reconnecting_status: "Reconnecting...",
   chatting_status: "Chatting with AI Agent",
+  queue_waiting_status:
+    "All agents are busy right now. We'll connect you automatically as soon as one is available.",
+  queue_waiting_status_short: "Waiting for an available agent",
 
   input_label: "Text message input",
   input_placeholder: "Send a message...",
@@ -125,6 +174,7 @@ export const DefaultTextContents = {
   agent_ended_conversation: "The agent ended the conversation",
   conversation_id: "ID",
   error_occurred: "An error occurred",
+  queue_timed_out: "All agents are still busy. Please try again later.",
   copy_id: "Copy ID",
   initiate_feedback: "How was this conversation?",
   request_follow_up_feedback: "Tell us more",
@@ -140,6 +190,19 @@ export const DefaultTextContents = {
   agent_working: "Working...",
   agent_done: "Completed",
   agent_error: "Error occurred",
+  attach_file: "Attach file",
+  remove_file: "Remove file",
+  file_upload_error: "Failed to upload file.",
+  file_type_unsupported: "Unsupported file type. Accepted types:",
+  file_too_large: "File size exceeds the maximum limit.",
+  file_limit_reached: "Maximum number of files for this conversation reached.",
+  typing_indicator: "Agent is typing ...",
+  thinking_status: "Thinking...",
+  rich_content_unavailable: "This content could not be displayed",
+  carousel_previous: "Previous",
+  carousel_next: "Next",
+  new_message: "1 new message",
+  new_messages: "{count} new messages",
 };
 
 export const TextKeys = Object.keys(DefaultTextContents) as (keyof typeof DefaultTextContents)[];

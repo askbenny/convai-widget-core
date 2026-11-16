@@ -3,10 +3,7 @@ import { render } from "preact";
 import { jsx } from "preact/jsx-runtime";
 import { registerWidget } from "./index";
 import { useEffect, useRef } from "preact/compat";
-import {
-  usePlaygroundSettings,
-  PlaygroundSettingsPanel,
-} from "./PlaygroundSettings";
+import { usePlaygroundSettings, PlaygroundSettingsPanel } from "./PlaygroundSettings";
 
 /**
  * A dev-only playground for testing the ConvAIWidget component inside Shadow DOM.
@@ -34,19 +31,25 @@ function Playground() {
       "mic-muting": JSON.stringify(state.micMuting),
       "override-text-only": JSON.stringify(state.textOnly),
       "always-expanded": JSON.stringify(state.alwaysExpanded),
+      "allow-events": JSON.stringify(state.allowEvents),
       dismissible: JSON.stringify(state.dismissible),
+      "end-confirmation": JSON.stringify(state.endConfirmation),
       "show-agent-status": JSON.stringify(state.showAgentStatus),
+      "show-resize-button": JSON.stringify(state.showResizeButton),
+      "mobile-fullscreen": JSON.stringify(state.mobileFullscreen),
+      "default-size": state.defaultSizeExpanded ? "expanded" : "compact",
+      layout: state.pageLayout ? "page" : "default",
+      "transcript-speech-sync": JSON.stringify(state.transcriptSpeechSync),
+      "show-language-selector-on-trigger": JSON.stringify(state.showLanguageSelectorOnTrigger),
       "dynamic-variables": JSON.stringify(state.dynamicVariables),
       "server-location": state.location,
-      "override-first-message": state.overrideFirstMessage
-        ? state.firstMessage
-        : undefined,
+      "override-first-message": state.overrideFirstMessage ? state.firstMessage : undefined,
     };
-    
+
     for (const [key, value] of Object.entries(attrs)) {
       if (value != null) el.setAttribute(key, value);
     }
-    
+
     container.appendChild(el);
 
     return () => {
@@ -60,8 +63,16 @@ function Playground() {
     state.micMuting,
     state.textOnly,
     state.alwaysExpanded,
+    state.allowEvents,
     state.dismissible,
+    state.endConfirmation,
     state.showAgentStatus,
+    state.showResizeButton,
+    state.mobileFullscreen,
+    state.defaultSizeExpanded,
+    state.pageLayout,
+    state.transcriptSpeechSync,
+    state.showLanguageSelectorOnTrigger,
     state.dynamicVariables,
     state.location,
     state.overrideFirstMessage,

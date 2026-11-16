@@ -1,9 +1,4 @@
-import {
-  ReadonlySignal,
-  Signal,
-  useComputed,
-  useSignal,
-} from "@preact/signals";
+import { ReadonlySignal, Signal, useComputed, useSignal } from "@preact/signals";
 import { ComponentChildren } from "preact";
 import { createContext, useMemo } from "preact/compat";
 import { AvatarConfig } from "../types/config";
@@ -60,11 +55,7 @@ export function AvatarConfigProvider({ children }: AvatarConfigProviderProps) {
 
   const value = useMemo(() => ({ config, previewUrl, canvasUrl }), []);
 
-  return (
-    <AvatarConfigContext.Provider value={value}>
-      {children}
-    </AvatarConfigContext.Provider>
-  );
+  return <AvatarConfigContext.Provider value={value}>{children}</AvatarConfigContext.Provider>;
 }
 
 export function useAvatarConfig() {

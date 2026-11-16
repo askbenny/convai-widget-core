@@ -21,11 +21,7 @@ interface FeedbackStore {
 
 const FeedbackContext = createContext<FeedbackStore | null>(null);
 
-export function FeedbackProvider({
-  children,
-}: {
-  children: ComponentChildren;
-}) {
+export function FeedbackProvider({ children }: { children: ComponentChildren }) {
   const rating = useSignal<number | null>(null);
   const feedbackText = useSignal<string>("");
   const feedbackProgress = useSignal<FeedbackStep>("initial");
@@ -38,9 +34,7 @@ export function FeedbackProvider({
     const conversationId = lastId.value;
 
     if (!conversationId) {
-      console.warn(
-        "[ConversationalAI] Cannot submit rating: missing conversation_id"
-      );
+      console.warn("[ConversationalAI] Cannot submit rating: missing conversation_id");
       return;
     }
 
@@ -63,9 +57,7 @@ export function FeedbackProvider({
     const conversationId = lastId.value;
 
     if (!conversationId) {
-      console.warn(
-        "[ConversationalAI] Cannot submit feedback: missing conversation_id"
-      );
+      console.warn("[ConversationalAI] Cannot submit feedback: missing conversation_id");
       return;
     }
 
@@ -119,11 +111,7 @@ export function FeedbackProvider({
     [submitRating, submitFeedback, reset]
   );
 
-  return (
-    <FeedbackContext.Provider value={store}>
-      {children}
-    </FeedbackContext.Provider>
-  );
+  return <FeedbackContext.Provider value={store}>{children}</FeedbackContext.Provider>;
 }
 
 export function useFeedback() {

@@ -40,7 +40,7 @@ function tableDataToMarkdown(data: { headers: string[]; rows: string[][] }) {
   const markdownRows: string[] = [];
 
   // Add headers
-  const escapedHeaders = headers.map(h => h.replace(/\|/g, "\\|"));
+  const escapedHeaders = headers.map((h) => h.replace(/\|/g, "\\|"));
   markdownRows.push(`| ${escapedHeaders.join(" | ")} |`);
 
   // Add separator row
@@ -53,7 +53,7 @@ function tableDataToMarkdown(data: { headers: string[]; rows: string[][] }) {
     while (paddedRow.length < headers.length) {
       paddedRow.push("");
     }
-    const escapedRow = paddedRow.map(cell => cell.replace(/\|/g, "\\|"));
+    const escapedRow = paddedRow.map((cell) => cell.replace(/\|/g, "\\|"));
     markdownRows.push(`| ${escapedRow.join(" | ")} |`);
   }
 
@@ -83,12 +83,8 @@ export function useCopyTable({
       if (!isCopied.value) {
         // Find the closest table element
         const button = event.currentTarget;
-        const tableWrapper = button.closest(
-          '[data-streamdown="table-wrapper"]'
-        );
-        const tableElement = tableWrapper?.querySelector(
-          "table"
-        ) as HTMLTableElement;
+        const tableWrapper = button.closest('[data-streamdown="table-wrapper"]');
+        const tableElement = tableWrapper?.querySelector("table") as HTMLTableElement;
 
         if (!tableElement) {
           onError?.(new Error("Table not found"));
@@ -106,10 +102,7 @@ export function useCopyTable({
         await navigator.clipboard.write([clipboardItemData]);
         isCopied.value = true;
         onCopy?.();
-        timeoutRef.current = window.setTimeout(
-          () => (isCopied.value = false),
-          timeout
-        );
+        timeoutRef.current = window.setTimeout(() => (isCopied.value = false), timeout);
       }
     } catch (error) {
       onError?.(error as Error);
@@ -152,10 +145,7 @@ export const TableComponent = ({
       </ContentBlock.Actions>
       <ContentBlock.Content className="overflow-x-auto">
         <table
-          className={cn(
-            "w-full border-collapse border border-base-border",
-            className
-          )}
+          className={cn("w-full border-collapse border border-base-border", className)}
           data-streamdown="table"
           {...props}
         >

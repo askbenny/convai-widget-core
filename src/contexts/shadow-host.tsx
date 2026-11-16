@@ -3,9 +3,7 @@ import { useContextSafely } from "../utils/useContextSafely";
 import { ComponentChildren } from "preact";
 import { Signal, useSignal } from "@preact/signals";
 
-const ShadowHostContext = createContext<Signal<HTMLElement | null> | null>(
-  null
-);
+const ShadowHostContext = createContext<Signal<HTMLElement | null> | null>(null);
 
 interface ShadowHostProviderProps {
   children: ComponentChildren;

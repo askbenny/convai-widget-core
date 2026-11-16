@@ -1,3 +1,4 @@
+import type { MessageAttachment } from "@elevenlabs/client";
 import { describe, expect, it } from "vitest";
 import type { TranscriptEntry } from "../contexts/conversation";
 import {
@@ -10,7 +11,12 @@ import {
 function msg(
   role: "agent" | "user",
   message: string,
-  opts: { eventId?: number; isText?: boolean; conversationIndex?: number } = {}
+  opts: {
+    eventId?: number;
+    isText?: boolean;
+    conversationIndex?: number;
+    attachments?: MessageAttachment[];
+  } = {}
 ): Extract<TranscriptEntry, { type: "message" }> {
   return {
     type: "message",
@@ -19,17 +25,28 @@ function msg(
     isText: opts.isText ?? true,
     conversationIndex: opts.conversationIndex ?? 0,
     eventId: opts.eventId,
+    attachments: opts.attachments,
+  };
+}
+
+function file(name: string): MessageAttachment {
+  return {
+    url: `https://files.example.com/${name}`,
+    name,
+    mime_type: "application/pdf",
   };
 }
 
 /** Helper to create a tool request entry */
 function toolReq(
   eventId: number,
-  toolCallId = "call_1"
+  toolCallId = "call_1",
+  toolType = "webhook"
 ): Extract<TranscriptEntry, { type: "agent_tool_request" }> {
   return {
     type: "agent_tool_request",
     toolName: "test_tool",
+    toolType,
     toolCallId,
     eventId,
     conversationIndex: 0,
@@ -50,10 +67,32 @@ function toolRes(
   };
 }
 
+function richContent(
+  id = "buttons_1",
+  opts: { eventId?: number; component?: string } = {}
+): Extract<TranscriptEntry, { type: "rich_content" }> {
+  return {
+    type: "rich_content",
+    component: opts.component ?? "buttons",
+    props: { buttons: [{ label: id, message: id }] },
+    conversationIndex: 0,
+    eventId: opts.eventId ?? 2,
+    richContentId: `rc_${id}`,
+  };
+}
+
+function carousel(
+  id = "carousel_1",
+  opts: { eventId?: number } = {}
+): Extract<TranscriptEntry, { type: "rich_content" }> {
+  return richContent(id, { ...opts, component: "carousel" });
+}
+
 /** Default config — no status, transcript enabled */
 const defaults: DisplayTranscriptConfig = {
   showAgentStatus: false,
   transcriptEnabled: true,
+  showRichContent: true,
 };
 
 function build(
@@ -134,6 +173,42 @@ describe("buildDisplayTranscript", () => {
     });
   });
 
+  describe("attachments", () => {
+    it("keeps an agent message that has no text but carries files", () => {
+      const result = build([msg("agent", "", { attachments: [file("a.pdf")] })]);
+
+      expect(result).toHaveLength(1);
+      expect(result[0]).toMatchObject({ attachments: [file("a.pdf")] });
+    });
+
+    it("does not fold a file-carrying reply into a later same-turn reply", () => {
+      const result = build([
+        msg("agent", "", { eventId: 2, attachments: [file("receipt.pdf")] }),
+        msg("agent", "Anything else?", { eventId: 2 }),
+      ]);
+
+      expect(result).toHaveLength(2);
+      expect(result[0]).toMatchObject({
+        message: "",
+        attachments: [file("receipt.pdf")],
+      });
+      expect(result[1]).toMatchObject({ message: "Anything else?" });
+    });
+
+    it("still folds a genuine empty placeholder into its final message", () => {
+      const result = build([
+        msg("agent", "", { eventId: 2 }),
+        msg("agent", "Done", { eventId: 2, attachments: [file("b.pdf")] }),
+      ]);
+
+      expect(result).toHaveLength(1);
+      expect(result[0]).toMatchObject({
+        message: "Done",
+        attachments: [file("b.pdf")],
+      });
+    });
+  });
+
   describe("grouping by eventId + role", () => {
     it.each<{
       description: string;
@@ -141,8 +216,13 @@ describe("buildDisplayTranscript", () => {
       expected: Array<{ message: string }>;
     }>([
       {
-        description: "replaces consecutive partial/final messages with the same eventId",
-        input: [msg("agent", "partial", { eventId: 2 }), msg("agent", "full", { eventId: 2 })],
+        description: "keeps two non-empty agent messages with the same eventId as separate bubbles",
+        input: [msg("agent", "before", { eventId: 2 }), msg("agent", "after", { eventId: 2 })],
+        expected: [{ message: "before" }, { message: "after" }],
+      },
+      {
+        description: "folds an empty placeholder into the following message",
+        input: [msg("agent", "", { eventId: 2 }), msg("agent", "full", { eventId: 2 })],
         expected: [{ message: "full" }],
       },
       {
@@ -160,6 +240,73 @@ describe("buildDisplayTranscript", () => {
       expect(result).toHaveLength(expected.length);
       expected.forEach((exp, i) => {
         expect(result[i]).toMatchObject(exp);
+      });
+    });
+
+    it("does not merge non-empty agent text segments separated by a tool call", () => {
+      // text > tool > text within the same turn (shared eventId). Both text
+      // segments have real content, so the second must not overwrite the first —
+      // a tool call separated them and the previous message is non-empty.
+      const input = [
+        msg("agent", "before tool", { eventId: 2 }),
+        toolReq(2),
+        toolRes(2),
+        msg("agent", "after tool", { eventId: 2 }),
+      ];
+      const result = build(input);
+      expect(result).toHaveLength(2);
+      expect(result[0]).toMatchObject({ message: "before tool" });
+      expect(result[1]).toMatchObject({ message: "after tool" });
+    });
+
+    it("merges empty placeholders into the final message across tool calls", () => {
+      // The streamed flow brackets tool calls with empty placeholders, all
+      // sharing the turn's eventId. These collapse into the single real message —
+      // an empty previous message is folded in even across a tool.
+      const input = [
+        msg("agent", "", { eventId: 2 }),
+        toolReq(2),
+        toolRes(2),
+        msg("agent", "Done", { eventId: 2 }),
+      ];
+      const result = build(input);
+      expect(result).toHaveLength(1);
+      expect(result[0]).toMatchObject({ message: "Done" });
+    });
+
+    it("folds an empty placeholder into its finalized message after a tool", () => {
+      // The first segment ends, a tool runs, then a new segment starts with an
+      // empty placeholder that is finalized in place. The empty placeholder
+      // folds into the finalized message, leaving one bubble per segment.
+      const input = [
+        msg("agent", "before tool", { eventId: 2 }),
+        toolReq(3),
+        toolRes(3),
+        msg("agent", "", { eventId: 3 }),
+        msg("agent", "full", { eventId: 3 }),
+      ];
+      const result = build(input);
+      expect(result).toHaveLength(2);
+      expect(result[0]).toMatchObject({ message: "before tool" });
+      expect(result[1]).toMatchObject({ message: "full" });
+    });
+
+    it("keeps pre-tool and post-tool messages when the tool emits no entries", () => {
+      // A server-side tool runs without emitting client agent_tool_request or
+      // agent_tool_response entries, so the pre-tool and post-tool replies
+      // (both non-empty, sharing the turn's eventId) sit adjacent in the
+      // transcript with nothing between them. They must remain separate bubbles.
+      const input = [
+        msg("agent", "Got it — let me look that up for you.", { eventId: 2 }),
+        msg("agent", "I've looked up the pricing for you.", { eventId: 2 }),
+      ];
+      const result = build(input, { showAgentStatus: true });
+      expect(result).toHaveLength(2);
+      expect(result[0]).toMatchObject({
+        message: "Got it — let me look that up for you.",
+      });
+      expect(result[1]).toMatchObject({
+        message: "I've looked up the pricing for you.",
       });
     });
   });
@@ -218,6 +365,28 @@ describe("buildDisplayTranscript", () => {
       const result = build(input, { showAgentStatus: false });
       expect(result[0]).not.toHaveProperty("toolStatus");
     });
+
+    it("attaches status to only the first bubble of a text → tool → text turn", () => {
+      // Two non-empty segments share the turn's eventId and stay as separate
+      // bubbles. The tool status attaches to the first (triggering) bubble only,
+      // so the badge is not duplicated across both.
+      const input = [
+        msg("agent", "Running the tool now.", { eventId: 2 }),
+        toolReq(2),
+        toolRes(2),
+        msg("agent", "Tool completed successfully", { eventId: 2 }),
+      ];
+      const result = build(input, { showAgentStatus: true });
+      expect(result).toHaveLength(2);
+      expect(result[0]).toMatchObject({
+        message: "Running the tool now.",
+        toolStatus: "success",
+      });
+      expect(result[1]).toMatchObject({
+        message: "Tool completed successfully",
+      });
+      expect(result[1]).not.toHaveProperty("toolStatus");
+    });
   });
 
   describe("transcript filtering", () => {
@@ -272,6 +441,89 @@ describe("buildDisplayTranscript", () => {
     });
   });
 
+  describe("message ordering", () => {
+    it("preserves source order for same eventId messages", () => {
+      const input = [
+        msg("agent", "Hello!", { eventId: 1, isText: false }),
+        msg("user", "Hi", { eventId: 1, isText: false }),
+      ];
+      const result = build(input);
+      expect(result).toHaveLength(2);
+      expect(result[0]).toMatchObject({ role: "agent", message: "Hello!" });
+      expect(result[1]).toMatchObject({ role: "user", message: "Hi" });
+    });
+
+    it("same eventId: agent-only turn stays agent without invented user", () => {
+      const input = [msg("agent", "Prologue", { eventId: 1, isText: true })];
+      const result = build(input);
+      expect(result).toHaveLength(1);
+      expect(result[0]).toMatchObject({
+        role: "agent",
+        message: "Prologue",
+      });
+    });
+
+    it("local user without eventId stays before server message in same layout", () => {
+      const input = [
+        msg("user", "typed locally", { isText: true }),
+        msg("agent", "server", { eventId: 5, isText: true }),
+      ];
+      const result = build(input);
+      expect(result).toHaveLength(2);
+      expect(result[0]).toMatchObject({
+        role: "user",
+        message: "typed locally",
+      });
+      expect(result[1]).toMatchObject({ role: "agent", message: "server" });
+    });
+
+    it("preserves source order across different eventIds", () => {
+      const input = [
+        msg("agent", "Hello!", { eventId: 2, isText: false }),
+        msg("user", "Hi", { eventId: 1, isText: false }),
+      ];
+      const result = build(input);
+      expect(result).toHaveLength(2);
+      expect(result[0]).toMatchObject({ role: "agent", message: "Hello!" });
+      expect(result[1]).toMatchObject({ role: "user", message: "Hi" });
+    });
+
+    it("preserves order when eventIds are already sequential", () => {
+      const input = [
+        msg("user", "Hi", { eventId: 1, isText: false }),
+        msg("agent", "Hello!", { eventId: 2, isText: false }),
+      ];
+      const result = build(input);
+      expect(result).toHaveLength(2);
+      expect(result[0]).toMatchObject({ role: "user", message: "Hi" });
+      expect(result[1]).toMatchObject({ role: "agent", message: "Hello!" });
+    });
+
+    it("preserves non-message entries between messages", () => {
+      const input: TranscriptEntry[] = [
+        msg("agent", "Hello!", { eventId: 2, isText: false }),
+        { type: "mode_toggle", mode: "text", conversationIndex: 0 },
+        msg("user", "Hi", { eventId: 1, isText: false }),
+      ];
+      const result = build(input);
+      expect(result).toHaveLength(3);
+      expect(result[0]).toMatchObject({ role: "agent", message: "Hello!" });
+      expect(result[1]).toMatchObject({ type: "mode_toggle" });
+      expect(result[2]).toMatchObject({ role: "user", message: "Hi" });
+    });
+
+    it("keeps entries without eventId in their original position", () => {
+      const input = [
+        msg("user", "typed", { isText: true }),
+        msg("agent", "response", { eventId: 5, isText: true }),
+      ];
+      const result = build(input);
+      expect(result).toHaveLength(2);
+      expect(result[0]).toMatchObject({ role: "user", message: "typed" });
+      expect(result[1]).toMatchObject({ role: "agent", message: "response" });
+    });
+  });
+
   describe("real HAR flows", () => {
     it.each<{
       description: string;
@@ -310,53 +562,471 @@ describe("buildDisplayTranscript", () => {
       });
     });
   });
+
+  describe("typing indicator", () => {
+    it("shows while the agent owes a reply", () => {
+      const config = { showAgentReplyPending: true };
+      expect(build([msg("user", "Hi"), msg("agent", "")], config)).toEqual([
+        expect.objectContaining({ message: "Hi" }),
+        expect.objectContaining({
+          type: "typing_indicator",
+          isExternalAgent: false,
+        }),
+      ]);
+      expect(build([msg("user", "Hi"), msg("agent", "Hello")], config)).toEqual([
+        expect.objectContaining({ message: "Hi" }),
+        expect.objectContaining({ message: "Hello" }),
+      ]);
+    });
+
+    it("gives way to the tool status while a tool runs", () => {
+      const config = { showAgentStatus: true, showAgentReplyPending: true };
+      const running = [msg("user", "Hi"), msg("agent", "", { eventId: 2 }), toolReq(2)];
+      expect(build(running, config)).toEqual([
+        expect.objectContaining({ message: "Hi" }),
+        expect.objectContaining({ role: "agent", toolStatus: "loading" }),
+      ]);
+      expect(build([...running, toolRes(2)], config)).toEqual([
+        expect.objectContaining({ message: "Hi" }),
+        expect.objectContaining({ role: "agent", toolStatus: "success" }),
+        expect.objectContaining({ type: "typing_indicator" }),
+      ]);
+    });
+
+    it("gives way to the tool status when a component follows the badge", () => {
+      const result = build(
+        [
+          msg("user", "Show me shoes"),
+          msg("agent", "Here are some", { eventId: 2 }),
+          carousel("carousel_1", { eventId: 2 }),
+          toolReq(2),
+        ],
+        { showAgentStatus: true, showAgentReplyPending: true }
+      );
+      expect(result.at(-1)).toMatchObject({ component: "carousel" });
+    });
+
+    it.each([
+      ["text", msg("agent", "It ships today", { eventId: 2, isText: false })],
+      [
+        "file",
+        msg("agent", "", {
+          eventId: 2,
+          isText: false,
+          attachments: [file("receipt.pdf")],
+        }),
+      ],
+    ])("stays up while the %s reply after a tool is not said yet", (_, reply) => {
+      const result = build(
+        [
+          msg("user", "Where's my order?"),
+          msg("agent", "Let me check", { eventId: 2, isText: false }),
+          toolReq(2),
+          toolRes(2),
+          { ...reply, visibleLength: 0 },
+        ],
+        { showAgentReplyPending: true }
+      );
+      expect(result.at(-1)).toMatchObject({ type: "typing_indicator" });
+    });
+
+    it("shows after the agent's opening line until it replies past the tool", () => {
+      const config = { showAgentReplyPending: true };
+      const pending = [
+        msg("user", "Where's my order?"),
+        msg("agent", "Let me check", { eventId: 2 }),
+        toolReq(2),
+        toolRes(2),
+      ];
+      expect(build(pending, config).at(-1)).toMatchObject({
+        type: "typing_indicator",
+      });
+      expect(
+        build([...pending, msg("agent", "It ships today", { eventId: 2 })], config).at(-1)
+      ).toMatchObject({ message: "It ships today" });
+    });
+
+    it("does not show after a system tool", () => {
+      const result = build(
+        [
+          msg("user", "Bye"),
+          msg("agent", "Goodbye", { eventId: 2 }),
+          toolReq(2, "call_1", "system"),
+        ],
+        { showAgentReplyPending: true }
+      );
+      expect(result.at(-1)).toMatchObject({ message: "Goodbye" });
+    });
+
+    it("appends typing indicator when showTypingIndicator is true", () => {
+      const input = [msg("user", "hi"), msg("agent", "hello", { eventId: 1 })];
+      const result = build(input, { showTypingIndicator: true });
+
+      expect(result).toHaveLength(3);
+      expect(result[2]).toMatchObject({
+        type: "typing_indicator",
+        conversationIndex: 0,
+        isExternalAgent: true,
+      });
+    });
+
+    it("does not append typing indicator when showTypingIndicator is false", () => {
+      const input = [msg("user", "hi"), msg("agent", "hello", { eventId: 1 })];
+      const result = build(input, { showTypingIndicator: false });
+
+      expect(result).toHaveLength(2);
+      expect(result.every((e) => e.type !== "typing_indicator")).toBe(true);
+    });
+
+    it("does not append typing indicator when showTypingIndicator is undefined", () => {
+      const input = [msg("user", "hi"), msg("agent", "hello", { eventId: 1 })];
+      const result = build(input);
+
+      expect(result).toHaveLength(2);
+      expect(result.every((e) => e.type !== "typing_indicator")).toBe(true);
+    });
+
+    it("uses conversationIndex from last entry", () => {
+      const input = [
+        msg("user", "hi", { conversationIndex: 5 }),
+        msg("agent", "hello", { eventId: 1, conversationIndex: 5 }),
+      ];
+      const result = build(input, { showTypingIndicator: true });
+
+      expect(result[2]).toMatchObject({
+        type: "typing_indicator",
+        conversationIndex: 5,
+      });
+    });
+
+    it("uses firstMessageConversationIndex when entries are empty", () => {
+      const input: TranscriptEntry[] = [];
+      const result = build(input, {
+        showTypingIndicator: true,
+        firstMessageConversationIndex: 42,
+      });
+
+      expect(result).toHaveLength(1);
+      expect(result[0]).toMatchObject({
+        type: "typing_indicator",
+        conversationIndex: 42,
+      });
+    });
+
+    it("defaults conversationIndex to 0 when no entries and no firstMessageConversationIndex", () => {
+      const input: TranscriptEntry[] = [];
+      const result = build(input, { showTypingIndicator: true });
+
+      expect(result).toHaveLength(1);
+      expect(result[0]).toMatchObject({
+        type: "typing_indicator",
+        conversationIndex: 0,
+      });
+    });
+  });
+
+  describe("rich content past a user turn", () => {
+    const richContentEntries = (result: DisplayTranscriptEntry[]) =>
+      result.filter((entry) => entry.type === "rich_content");
+
+    // A user turn after a row means the customer has moved on. Agent turns do
+    // not count: the tool flow puts a short agent follow-up after every row.
+    it("retires the replies of a turn and keeps its carousel", () => {
+      const result = build([
+        carousel("a", { eventId: 2 }),
+        richContent("b", { eventId: 2 }),
+        msg("user", "the first one"),
+      ]);
+
+      expect(richContentEntries(result)).toHaveLength(1);
+      expect(result[0]).toMatchObject({ component: "carousel" });
+    });
+
+    it("drops a row once a user message follows it", () => {
+      const result = build([
+        msg("agent", "Two options", { eventId: 2 }),
+        richContent("a"),
+        msg("user", "the first one"),
+      ]);
+
+      expect(richContentEntries(result)).toHaveLength(0);
+      expect(result).toHaveLength(2);
+    });
+
+    it("drops a component this build cannot draw once answered", () => {
+      const result = build([
+        richContent("a", { component: "unknown_component" }),
+        msg("user", "the first one"),
+      ]);
+
+      expect(richContentEntries(result)).toHaveLength(0);
+    });
+
+    it("keeps a row live under agent follow-ups", () => {
+      const result = build([
+        msg("user", "show me options"),
+        richContent("a"),
+        msg("agent", "Which would you like?", { eventId: 2 }),
+      ]);
+
+      expect(richContentEntries(result)).toHaveLength(1);
+      expect(result[1]).toMatchObject({ type: "rich_content" });
+    });
+
+    it("counts a filtered voice turn as the customer moving on", () => {
+      // The check reads the raw entries, so a non-text user turn hidden from
+      // the display still retires the row.
+      const result = build([richContent("a"), msg("user", "spoken reply", { isText: false })], {
+        transcriptEnabled: false,
+      });
+
+      expect(richContentEntries(result)).toHaveLength(0);
+    });
+
+    it("draws no component when rich content is off", () => {
+      const result = build([richContent("a"), msg("agent", "Hello!", { eventId: 1 })], {
+        showRichContent: false,
+      });
+
+      expect(richContentEntries(result)).toHaveLength(0);
+      expect(result).toHaveLength(1);
+    });
+
+    it("only user turns before the row leave it live", () => {
+      const result = build([
+        msg("user", "hi"),
+        msg("agent", "Hello!", { eventId: 2 }),
+        richContent("a"),
+      ]);
+
+      expect(richContentEntries(result)).toHaveLength(1);
+      expect(result[2]).toMatchObject({ type: "rich_content" });
+    });
+  });
+
+  describe("first message rich content", () => {
+    const firstMessageRow = (): Extract<TranscriptEntry, { type: "rich_content" }> => ({
+      ...richContent("greeting", { eventId: 1 }),
+      richContentId: "first_message",
+    });
+
+    it("places the row below a first message that arrives from the server", () => {
+      const result = build([firstMessageRow(), msg("agent", "Hello!", { eventId: 1 })], {
+        deferFirstMessageRichContent: true,
+      });
+
+      expect(result).toHaveLength(2);
+      expect(result[0]).toMatchObject({ message: "Hello!" });
+      expect(result[1]).toMatchObject({ richContentId: "first_message" });
+    });
+
+    it("hides the row until the first message arrives", () => {
+      const result = build([firstMessageRow()], {
+        deferFirstMessageRichContent: true,
+      });
+
+      expect(result).toHaveLength(0);
+    });
+
+    it("holds the row until a spoken first message has been said", () => {
+      const greeting = (visibleLength?: number) => ({
+        ...msg("agent", "Hello!", { eventId: 1, isText: false }),
+        visibleLength,
+      });
+      const config = { deferFirstMessageRichContent: true };
+
+      expect(build([firstMessageRow(), greeting(2)], config)).toEqual([
+        expect.objectContaining({ message: "He" }),
+      ]);
+
+      expect(build([firstMessageRow(), greeting(6)], config)).toEqual([
+        expect.objectContaining({ message: "Hello!" }),
+        expect.objectContaining({ richContentId: "first_message" }),
+      ]);
+    });
+  });
+
+  describe("voice messages being revealed with speech", () => {
+    function voice(
+      message: string,
+      visibleLength?: number,
+      opts: { speechInterrupted?: boolean } = {}
+    ) {
+      return {
+        ...msg("agent", message, { eventId: 2, isText: false }),
+        visibleLength,
+        ...opts,
+      };
+    }
+
+    it("keeps the tool status visible before anything is said", () => {
+      const result = build([voice("Let me check.", 0), toolReq(2)], {
+        showAgentStatus: true,
+      });
+      expect(result).toEqual([expect.objectContaining({ message: "", toolStatus: "loading" })]);
+    });
+
+    it("does not show an empty bubble for a later message not said yet", () => {
+      const result = build(
+        [voice("Let me check.", 3), toolReq(2), toolRes(2), voice("It is free.", 0)],
+        { showAgentStatus: true }
+      );
+      expect(result).toEqual([expect.objectContaining({ message: "Let", toolStatus: "success" })]);
+    });
+
+    it("holds rich content until the text before it has been said", () => {
+      const input = [voice("Here are options.", 4), richContent()];
+      expect(build(input)).toEqual([expect.objectContaining({ message: "Here" })]);
+
+      const said = [voice("Here are options.", 17), richContent()];
+      expect(build(said)).toEqual([
+        expect.objectContaining({ message: "Here are options." }),
+        expect.objectContaining({ type: "rich_content" }),
+      ]);
+    });
+
+    it("shows a carousel while the text before it is being said", () => {
+      const result = build([voice("Here are options.", 4), carousel()]);
+      expect(result).toEqual([
+        expect.objectContaining({ message: "Here" }),
+        expect.objectContaining({ component: "carousel" }),
+      ]);
+    });
+
+    it("shows rich content after an interrupted message", () => {
+      const result = build([
+        voice("Here are options.", 4, { speechInterrupted: true }),
+        richContent(),
+      ]);
+      expect(result).toEqual([
+        expect.objectContaining({ message: "Here" }),
+        expect.objectContaining({ type: "rich_content" }),
+      ]);
+    });
+  });
+
+  describe("rich content", () => {
+    it("keeps components where they arrived, in arrival order", () => {
+      const input = [
+        msg("user", "show me some options"),
+        msg("agent", "Two options", { eventId: 2 }),
+        richContent("a"),
+        richContent("b"),
+        msg("agent", "Anything else?", { eventId: 2 }),
+      ];
+      const result = build(input);
+
+      expect(result).toHaveLength(5);
+      expect(result[1]).toMatchObject({ message: "Two options" });
+      expect(result[2]).toMatchObject({ richContentId: "rc_a" });
+      expect(result[3]).toMatchObject({ richContentId: "rc_b" });
+      expect(result[4]).toMatchObject({ message: "Anything else?" });
+    });
+
+    it("keeps a component above the reply even when a placeholder precedes it", () => {
+      // The placeholder survives only because it carries the status badge.
+      const input = [
+        msg("agent", "", { eventId: 2 }),
+        toolReq(2),
+        toolRes(2),
+        richContent(),
+        msg("agent", "Here you go", { eventId: 2 }),
+      ];
+      const result = build(input, { showAgentStatus: true });
+
+      expect(result).toHaveLength(3);
+      expect(result[0]).toMatchObject({ message: "", toolStatus: "success" });
+      expect(result[1]).toMatchObject({ type: "rich_content" });
+      expect(result[2]).toMatchObject({ message: "Here you go" });
+    });
+
+    it("drops the placeholder a component follows when there is no badge", () => {
+      // With no status to show, nothing keeps the empty placeholder.
+      const input = [
+        msg("agent", "", { eventId: 2 }),
+        richContent(),
+        msg("agent", "Here you go", { eventId: 2 }),
+      ];
+      const result = build(input);
+
+      expect(result).toHaveLength(2);
+      expect(result[0]).toMatchObject({ type: "rich_content" });
+      expect(result[1]).toMatchObject({ message: "Here you go" });
+    });
+
+    it("places components above the reply for a real captured turn", () => {
+      // Replays the order the backend produces: empty text windows while the
+      // model calls the tool, a component per call, then the reply that
+      // introduces them.
+      const input = [
+        msg("user", "show me some options"),
+        msg("agent", "", { eventId: 2 }),
+        toolRes(2),
+        msg("agent", "", { eventId: 2 }),
+        richContent("a", { eventId: 2 }),
+        toolRes(2),
+        richContent("b", { eventId: 2 }),
+        toolRes(2),
+        msg("agent", "Here are some options.", { eventId: 2 }),
+      ];
+
+      for (const showAgentStatus of [false, true]) {
+        const result = build(input, { showAgentStatus });
+
+        expect(result).toHaveLength(4);
+        expect(result[0]).toMatchObject({ role: "user" });
+        expect(result[1]).toMatchObject({ richContentId: "rc_a" });
+        expect(result[2]).toMatchObject({ richContentId: "rc_b" });
+        expect(result[3]).toMatchObject({ message: "Here are some options." });
+      }
+    });
+
+    it("leaves the tool status badge on the first bubble of the turn", () => {
+      const input = [
+        msg("agent", "Running the tool now.", { eventId: 2 }),
+        toolReq(2),
+        toolRes(2),
+        richContent(),
+        msg("agent", "Tool completed successfully", { eventId: 2 }),
+      ];
+      const result = build(input, { showAgentStatus: true });
+
+      expect(result).toHaveLength(3);
+      expect(result[0]).toMatchObject({
+        message: "Running the tool now.",
+        toolStatus: "success",
+      });
+      expect(result[1]).toMatchObject({ type: "rich_content" });
+      expect(result[2]).toMatchObject({
+        message: "Tool completed successfully",
+      });
+      expect(result[2]).not.toHaveProperty("toolStatus");
+    });
+
+    it("places a component before an appended typing indicator", () => {
+      const input = [msg("agent", "Here you go", { eventId: 2 }), richContent()];
+      const result = build(input, { showTypingIndicator: true });
+
+      expect(result).toHaveLength(3);
+      expect(result[1]).toMatchObject({ type: "rich_content" });
+      expect(result[2]).toMatchObject({ type: "typing_indicator" });
+    });
+  });
 });
 
-it("preserves text on both sides of a tool call with one status badge", () => {
-  const result = build(
-    [
-      msg("agent", "Checking", { eventId: 2 }),
-      toolReq(2),
-      toolRes(2),
-      msg("agent", "Available", { eventId: 2 }),
-    ],
-    { showAgentStatus: true }
-  );
-  expect(result).toHaveLength(2);
-  expect(result[0]).toMatchObject({ message: "Checking", toolStatus: "success" });
-  expect(result[1]).toMatchObject({ message: "Available" });
-  expect(result[1]).not.toHaveProperty("toolStatus");
-});
-
-it("does not share tool status across conversations reusing event IDs", () => {
-  const result = build(
-    [
-      msg("agent", "First", { eventId: 2 }),
-      toolReq(2),
-      msg("agent", "Second", { eventId: 2, conversationIndex: 1 }),
-      { ...toolReq(2), conversationIndex: 1 },
-      { ...toolRes(2), conversationIndex: 1 },
-    ],
-    { showAgentStatus: true }
-  );
-  expect(result[0]).toMatchObject({ toolStatus: "loading" });
-  expect(result[1]).toMatchObject({ toolStatus: "success" });
-});
-
-it("updates partial replies independently on both sides of a tool boundary", () => {
-  const result = build(
-    [
-      msg("agent", "Checking...", { eventId: 2 }),
-      msg("agent", "Checking availability", { eventId: 2 }),
-      toolReq(2),
-      toolRes(2),
-      msg("agent", "Tuesday...", { eventId: 2 }),
-      msg("agent", "Tuesday is available", { eventId: 2 }),
-    ],
-    { showAgentStatus: true }
-  );
-  expect(result).toHaveLength(2);
-  expect(result[0]).toMatchObject({ message: "Checking availability", toolStatus: "success" });
-  expect(result[1]).toMatchObject({ message: "Tuesday is available" });
-  expect(result[1]).not.toHaveProperty("toolStatus");
+describe("tool status across conversations", () => {
+  it("does not share tool status across conversations reusing event IDs", () => {
+    const result = build(
+      [
+        msg("agent", "First", { eventId: 2 }),
+        toolReq(2),
+        msg("agent", "Second", { eventId: 2, conversationIndex: 1 }),
+        { ...toolReq(2), conversationIndex: 1 },
+        { ...toolRes(2), conversationIndex: 1 },
+      ],
+      { showAgentStatus: true }
+    );
+    expect(result[0]).toMatchObject({ message: "First", toolStatus: "loading" });
+    expect(result[1]).toMatchObject({ message: "Second", toolStatus: "success" });
+  });
 });

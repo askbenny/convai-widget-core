@@ -9,8 +9,7 @@ export const Style = memo(function Style() {
   const prelude = useComputed(() => {
     const styles = config.value.styles;
     return `:host, :root {\n${StyleKeys.map(
-      key =>
-        `${keyToCssVar(key)}: ${parseCssValue(styles?.[key] ?? DefaultStyles[key])};`
+      (key) => `${keyToCssVar(key)}: ${parseCssValue(styles?.[key] ?? DefaultStyles[key])};`
     ).join("\n")}\n}`;
   });
 

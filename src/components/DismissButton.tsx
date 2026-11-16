@@ -4,11 +4,7 @@ interface DismissButtonProps extends Omit<BaseButtonProps, "icon" | "aria-label"
   onDismiss?: () => void;
 }
 
-export function DismissButton({
-  onDismiss,
-  className,
-  ...rest
-}: DismissButtonProps) {
+export function DismissButton({ onDismiss, className, ...rest }: DismissButtonProps) {
   const handleClick = (e: MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();

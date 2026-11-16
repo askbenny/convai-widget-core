@@ -5,10 +5,7 @@ import { Button } from "../components/Button";
 import { InOutTransition } from "../components/InOutTransition";
 import { StatusLabel } from "./StatusLabel";
 import { useTextContents } from "../contexts/text-contents";
-import {
-  useIsConversationTextOnly,
-  useTextInputEnabled,
-} from "../contexts/widget-config";
+import { useIsConversationTextOnly, useTextInputEnabled } from "../contexts/widget-config";
 
 export function AvatarOverlay({
   showAvatar,
@@ -41,9 +38,7 @@ export function AvatarOverlay({
     () => !showTranscript.value && isDisconnected.value && !textOnly.value
   );
 
-  const showStatusLabel = useComputed(
-    () => !showTranscript.value && !isDisconnected.value
-  );
+  const showStatusLabel = useComputed(() => !showTranscript.value && !isDisconnected.value);
 
   return (
     <InOutTransition active={showAvatar}>
@@ -55,12 +50,12 @@ export function AvatarOverlay({
               aria-label={text.start_call}
               variant="primary"
               icon="phone"
-              onClick={e => onStartSession(e.currentTarget)}
+              onClick={(e) => onStartSession(e.currentTarget)}
             />
           </div>
         </InOutTransition>
         <InOutTransition active={showStatusLabel}>
-          <div className="absolute -bottom-3 left-1/2 -translate-x-1/2 translate-y-full transition-[opacity,transform] data-hidden:opacity-0 data-hidden:scale-75">
+          <div className="absolute -bottom-3 left-1/2 -translate-x-1/2 translate-y-full w-max transition-[opacity,transform] data-hidden:opacity-0 data-hidden:scale-75">
             <StatusLabel />
           </div>
         </InOutTransition>

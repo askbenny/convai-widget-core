@@ -11,11 +11,7 @@ export function Root({ children, ...rest }: RootPortalProviderProps) {
 
   return (
     <div ref={setPortal} {...rest}>
-      {portal && (
-        <RootPortalContext.Provider value={portal}>
-          {children}
-        </RootPortalContext.Provider>
-      )}
+      {portal && <RootPortalContext.Provider value={portal}>{children}</RootPortalContext.Provider>}
     </div>
   );
 }
