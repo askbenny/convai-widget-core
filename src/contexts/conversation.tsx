@@ -13,6 +13,10 @@ import { useShadowHost } from "./shadow-host";
 
 const FIRST_MESSAGE_EVENT_ID = 1;
 
+// A text chat stays open while the tab does, so an idle one would otherwise run
+// to the agent's maximum duration (usually 10 minutes) and be counted that long.
+export const TEXT_CHAT_IDLE_TIMEOUT_MS = 3 * 60 * 1000;
+
 type AgentEventId = number | undefined;
 
 type AgentStream = {
@@ -139,16 +143,15 @@ export type TranscriptEntry =
 export function ConversationProvider({ children }: ConversationProviderProps) {
   const value = useConversationSetup();
 
-  // Automatically disconnect the conversation after 10 minutes of no messages
+  // End a text chat the visitor has walked away from. Any message or keystroke
+  // restarts the wait; a message sent after it ends starts a new chat.
   useSignalEffect(() => {
     if (value.conversationTextOnly.value === true) {
       value.transcript.value;
-      const id = setTimeout(
-        () => {
-          value.endSession();
-        },
-        10 * 60 * 1000 // 10 minutes
-      );
+      value.lastUserActivity.value;
+      const id = setTimeout(() => {
+        value.endSession();
+      }, TEXT_CHAT_IDLE_TIMEOUT_MS);
       return () => {
         clearTimeout(id);
       };
@@ -197,6 +200,7 @@ function useConversationSetup() {
     const transcript = signal<TranscriptEntry[]>([]);
     const conversationIndex = signal(0);
     const conversationTextOnly = signal<boolean | null>(null);
+    const lastUserActivity = signal(0);
 
     return {
       status,
@@ -209,6 +213,7 @@ function useConversationSetup() {
       conversationIndex,
       conversationTextOnly,
       transcript,
+      lastUserActivity,
       startSession: (element: HTMLElement, initialMessage?: string) => {
         if (startRef.current) return startRef.current;
         const isCurrent = guard();
@@ -565,6 +570,7 @@ function useConversationSetup() {
       },
       sendUserActivity: () => {
         conversationRef.current?.sendUserActivity();
+        lastUserActivity.value = Date.now();
       },
       addModeToggleEntry: (mode: ConversationMode) => {
         // Only add entry if conversation is active

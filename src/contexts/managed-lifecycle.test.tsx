@@ -11,7 +11,7 @@ import { WidgetConfigProvider, useFirstMessage } from "./widget-config";
 import { LanguageConfigProvider } from "./language-config";
 import { TermsProvider, useTerms } from "./terms";
 import { SessionConfigProvider, useSessionPresentation } from "./session-config";
-import { ConversationProvider, useConversation } from "./conversation";
+import { ConversationProvider, TEXT_CHAT_IDLE_TIMEOUT_MS, useConversation } from "./conversation";
 import { ShadowHostProvider } from "./shadow-host";
 
 let state: {
@@ -185,6 +185,7 @@ async function captureSession(attributes: CustomAttributes = {}, initialMessage?
         config.onStatusChange?.({ status: "disconnected" });
       },
       sendUserMessage: () => {},
+      sendUserActivity: () => {},
     } as unknown as Conversation;
   });
   const previous = state;
@@ -314,5 +315,33 @@ describe("upstream transcript fixes with managed sessions", () => {
     ]);
     agentMessage(sdk.mock.calls[1][0], "New reply");
     expect(messages()).toEqual(["New reply"]);
+  });
+});
+
+describe("idle text chats", () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it("ends a text chat after the idle wait, counting typing as activity", async () => {
+    const config = await captureSession({ "agent-id": "text_only" }, "Hello");
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    agentMessage(config, "Answer");
+    await vi.advanceTimersByTimeAsync(TEXT_CHAT_IDLE_TIMEOUT_MS - 1);
+    expect(state.conversation.isDisconnected.peek()).toBe(false);
+    state.conversation.sendUserActivity();
+    await vi.advanceTimersByTimeAsync(TEXT_CHAT_IDLE_TIMEOUT_MS - 1);
+    expect(state.conversation.isDisconnected.peek()).toBe(false);
+    await vi.advanceTimersByTimeAsync(1);
+    expect(state.conversation.isDisconnected.peek()).toBe(true);
+    expect(state.conversation.transcript.peek().at(-1)).toMatchObject({ type: "disconnection" });
+  });
+
+  it("leaves voice conversations to the agent's own limits", async () => {
+    const config = await captureSession();
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    agentMessage(config, "Spoken answer");
+    await vi.advanceTimersByTimeAsync(TEXT_CHAT_IDLE_TIMEOUT_MS * 4);
+    expect(state.conversation.isDisconnected.peek()).toBe(false);
   });
 });

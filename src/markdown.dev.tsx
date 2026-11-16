@@ -133,6 +133,7 @@ function MockConversationProvider({
       canSendFeedback: signal(false),
       conversationIndex: signal(0),
       conversationTextOnly: signal<boolean | null>(null),
+      lastUserActivity: signal(0),
       transcript: mockTranscript,
       startSession: async () => "",
       endSession: async () => {},
