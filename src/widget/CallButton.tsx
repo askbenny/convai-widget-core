@@ -1,5 +1,6 @@
 import { useConversation } from "../contexts/conversation";
 import { useTextContents } from "../contexts/text-contents";
+import { useEndConfirmation } from "../contexts/end-confirmation";
 import { BaseButtonProps, Button } from "../components/Button";
 import { cn } from "../utils/cn";
 
@@ -8,26 +9,19 @@ interface CallButtonProps extends BaseButtonProps {
   isDisconnected?: boolean;
 }
 
-export function CallButton({
-  iconOnly,
-  isDisconnected,
-  children,
-  ...props
-}: CallButtonProps) {
-  const { endSession, startSession } = useConversation();
+export function CallButton({ iconOnly, isDisconnected, children, ...props }: CallButtonProps) {
+  const { startSession } = useConversation();
+  const { requestEndSession } = useEndConfirmation();
   const text = useTextContents();
   return (
     <Button
       variant={isDisconnected ? "primary" : "secondary"}
       icon={isDisconnected ? "phone" : "phone-off"}
-      onClick={isDisconnected ? e => startSession(e.currentTarget) : endSession}
+      onClick={isDisconnected ? (e) => startSession(e.currentTarget) : requestEndSession}
       aria-label={isDisconnected ? text.start_call : text.end_call}
       {...props}
     >
-      {!iconOnly
-        ? (children ??
-          (isDisconnected ? text.start_call : text.end_call))
-        : undefined}
+      {!iconOnly ? (children ?? (isDisconnected ? text.start_call : text.end_call)) : undefined}
     </Button>
   );
 }

@@ -16,6 +16,8 @@ import { allowedDomainsToLinkPrefixes } from "./utils/allowedDomainsToLinkPrefix
 import type { MarkdownLinkConfig } from "../contexts/widget-config";
 import { parseMarkdownIntoBlocks } from "./utils/parse-blocks";
 import { parseIncompleteMarkdown } from "./utils/parse-incomplete-markdown";
+import { rehypeAudioTags } from "./utils/rehype-audio-tags";
+import { rehypeUnwrapIncompleteLinks } from "./utils/rehype-unwrap-incomplete-links";
 import { cn } from "../utils/cn";
 import { ParsersContext, parserConfig } from "./utils/highlighter";
 
@@ -41,14 +43,16 @@ function getDefaultOrigin(): string {
   return document.location.origin;
 }
 
-function createRehypePlugins(linkConfig: MarkdownLinkConfig): PluggableList {
+function createRehypePlugins(
+  linkConfig: MarkdownLinkConfig,
+  styleAudioTags: boolean
+): PluggableList {
   const defaultOrigin = getDefaultOrigin();
-  const allowedLinkPrefixes = [
-    defaultOrigin,
-    ...allowedDomainsToLinkPrefixes(linkConfig),
-  ];
+  const allowedLinkPrefixes = [defaultOrigin, ...allowedDomainsToLinkPrefixes(linkConfig)];
 
   return [
+    // Before sanitize and harden, which would strip or block the placeholder href
+    rehypeUnwrapIncompleteLinks,
     rehypeRaw,
     [
       rehypeSanitize,
@@ -60,6 +64,7 @@ function createRehypePlugins(linkConfig: MarkdownLinkConfig): PluggableList {
         },
       },
     ],
+    ...(styleAudioTags ? [rehypeAudioTags] : []),
     [
       rehypeHarden,
       {
@@ -69,7 +74,7 @@ function createRehypePlugins(linkConfig: MarkdownLinkConfig): PluggableList {
         defaultOrigin,
         allowDataImages: true,
       },
-    ]
+    ],
   ];
 }
 
@@ -85,16 +90,16 @@ export type StreamdownProps = {
   className?: string;
   isAnimating?: boolean;
   linkConfig: MarkdownLinkConfig;
+  styleAudioTags?: boolean;
 };
 
 export type StreamdownRuntimeContextType = {
   isAnimating: boolean;
 };
 
-export const StreamdownRuntimeContext =
-  createContext<StreamdownRuntimeContextType>({
-    isAnimating: false,
-  });
+export const StreamdownRuntimeContext = createContext<StreamdownRuntimeContextType>({
+  isAnimating: false,
+});
 
 type BlockProps = {
   content: string;
@@ -112,14 +117,11 @@ const Block = memo(
       [content, shouldParseIncompleteMarkdown]
     );
 
-    return (
-      <Markdown {...markdownOptions}>{parsedContent}</Markdown>
-    );
+    return <Markdown {...markdownOptions}>{parsedContent}</Markdown>;
   },
   (prevProps, nextProps) =>
     prevProps.content === nextProps.content &&
-    prevProps.shouldParseIncompleteMarkdown ===
-    nextProps.shouldParseIncompleteMarkdown &&
+    prevProps.shouldParseIncompleteMarkdown === nextProps.shouldParseIncompleteMarkdown &&
     prevProps.markdownOptions === nextProps.markdownOptions
 );
 
@@ -130,26 +132,26 @@ export const WidgetStreamdown = memo(
     className,
     isAnimating = false,
     linkConfig,
+    styleAudioTags = false,
   }: StreamdownProps) => {
     const generatedId = useId();
     const blocks = useMemo(
-      () =>
-        parseMarkdownIntoBlocks(typeof children === "string" ? children : ""),
+      () => parseMarkdownIntoBlocks(typeof children === "string" ? children : ""),
       [children]
     );
     const markdownOptions = useMemo<Readonly<Options>>(
       () => ({
         components: defaultComponents,
-        rehypePlugins: createRehypePlugins(linkConfig),
+        rehypePlugins: createRehypePlugins(linkConfig, styleAudioTags),
         remarkPlugins: defaultRemarkPlugins,
       }),
-      [linkConfig]
+      [linkConfig, styleAudioTags]
     );
 
     return (
       <ParsersContext.Provider value={parserConfig}>
         <StreamdownRuntimeContext.Provider value={{ isAnimating }}>
-          <div className={cn("markdown *:first:mt-0 *:last:mb-0", className)}>
+          <div dir="auto" className={cn("markdown *:first:mt-0 *:last:mb-0", className)}>
             {blocks.map((block, index) => (
               <Block
                 content={block}
@@ -168,5 +170,6 @@ export const WidgetStreamdown = memo(
     prevProps.isAnimating === nextProps.isAnimating &&
     prevProps.className === nextProps.className &&
     prevProps.parseIncompleteMarkdown === nextProps.parseIncompleteMarkdown &&
-    prevProps.linkConfig === nextProps.linkConfig
+    prevProps.linkConfig === nextProps.linkConfig &&
+    prevProps.styleAudioTags === nextProps.styleAudioTags
 );

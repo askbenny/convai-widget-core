@@ -58,19 +58,14 @@ function sameClassAndNode(
   prev: { className?: Signalish<string | undefined>; node?: MarkdownNode },
   next: { className?: Signalish<string | undefined>; node?: MarkdownNode }
 ) {
-  return (
-    prev.className === next.className && sameNodePosition(prev.node, next.node)
-  );
+  return prev.className === next.className && sameNodePosition(prev.node, next.node);
 }
 
 type OlProps = WithNode<JSX.IntrinsicElements["ol"]>;
 const MemoOl = memo<OlProps>(
   ({ children, className, node, ...props }: OlProps) => (
     <ol
-      className={cn(
-        "ml-4 mb-2 list-outside list-decimal whitespace-normal text-sm",
-        className
-      )}
+      className={cn("ms-4 mb-2 list-outside list-decimal whitespace-normal text-sm", className)}
       data-streamdown="ordered-list"
       {...props}
     >
@@ -85,11 +80,7 @@ type LiProps = WithNode<JSX.IntrinsicElements["li"]>;
 
 const MemoLi = memo<LiProps>(
   ({ children, className, node, ...props }: LiProps) => (
-    <li
-      className={cn("py-1", className)}
-      data-streamdown="list-item"
-      {...props}
-    >
+    <li className={cn("py-1", className)} data-streamdown="list-item" {...props}>
       {children}
     </li>
   ),
@@ -101,10 +92,7 @@ type UlProps = WithNode<JSX.IntrinsicElements["ul"]>;
 const MemoUl = memo<UlProps>(
   ({ children, className, node, ...props }: UlProps) => (
     <ul
-      className={cn(
-        "ml-4 list-outside list-disc whitespace-normal text-sm",
-        className
-      )}
+      className={cn("ms-4 list-outside list-disc whitespace-normal text-sm", className)}
       data-streamdown="unordered-list"
       {...props}
     >
@@ -131,11 +119,7 @@ MemoHr.displayName = "MarkdownHr";
 type StrongProps = WithNode<JSX.IntrinsicElements["span"]>;
 const MemoStrong = memo<StrongProps>(
   ({ children, className, node, ...props }: StrongProps) => (
-    <span
-      className={cn("font-medium", className)}
-      data-streamdown="strong"
-      {...props}
-    >
+    <span className={cn("font-medium", className)} data-streamdown="strong" {...props}>
       {children}
     </span>
   ),
@@ -145,38 +129,28 @@ MemoStrong.displayName = "MarkdownStrong";
 
 type AProps = WithNode<JSX.IntrinsicElements["a"]> & { href?: string };
 const MemoA = memo<AProps>(
-  ({ children, className, href, node, ...props }: AProps) => {
-    const isIncomplete = href === "streamdown:incomplete-link";
-
-    return (
-      <a
-        className={cn("wrap-anywhere font-medium underline", className)}
-        data-incomplete={isIncomplete}
-        data-streamdown="link"
-        href={href}
-        rel="noreferrer"
-        target="_blank"
-        {...props}
-      >
-        {children}
-      </a>
-    );
-  },
+  ({ children, className, href, node, ...props }: AProps) => (
+    <a
+      className={cn("wrap-anywhere font-medium underline", className)}
+      data-streamdown="link"
+      href={href}
+      rel="noreferrer"
+      target="_blank"
+      {...props}
+    >
+      {children}
+    </a>
+  ),
   (p, n) => sameClassAndNode(p, n) && p.href === n.href
 );
 MemoA.displayName = "MarkdownA";
 
-type HeadingProps<TTag extends keyof JSX.IntrinsicElements> = WithNode<
-  JSX.IntrinsicElements[TTag]
->;
+type HeadingProps<TTag extends keyof JSX.IntrinsicElements> = WithNode<JSX.IntrinsicElements[TTag]>;
 
 const MemoH1 = memo<HeadingProps<"h1">>(
   ({ children, className, node, ...props }) => (
     <h1
-      className={cn(
-        "mt-6 mb-2 text-base-primary font-semibold text-xl",
-        className
-      )}
+      className={cn("mt-6 mb-2 text-base-primary font-semibold text-xl", className)}
       data-streamdown="heading-1"
       {...props}
     >
@@ -190,10 +164,7 @@ MemoH1.displayName = "MarkdownH1";
 const MemoH2 = memo<HeadingProps<"h2">>(
   ({ children, className, node, ...props }) => (
     <h2
-      className={cn(
-        "mt-3 mb-2 text-base-primary font-semibold text-lg",
-        className
-      )}
+      className={cn("mt-3 mb-2 text-base-primary font-semibold text-lg", className)}
       data-streamdown="heading-2"
       {...props}
     >
@@ -207,10 +178,7 @@ MemoH2.displayName = "MarkdownH2";
 const MemoH3 = memo<HeadingProps<"h3">>(
   ({ children, className, node, ...props }) => (
     <h3
-      className={cn(
-        "mt-3 mb-1 text-base-primary font-semibold text-md",
-        className
-      )}
+      className={cn("mt-3 mb-1 text-base-primary font-semibold text-md", className)}
       data-streamdown="heading-3"
       {...props}
     >
@@ -224,10 +192,7 @@ MemoH3.displayName = "MarkdownH3";
 const MemoH4 = memo<HeadingProps<"h4">>(
   ({ children, className, node, ...props }) => (
     <h4
-      className={cn(
-        "mt-3 mb-1 text-base-primary font-semibold text-sm",
-        className
-      )}
+      className={cn("mt-3 mb-1 text-base-primary font-semibold text-sm", className)}
       data-streamdown="heading-4"
       {...props}
     >
@@ -241,10 +206,7 @@ MemoH4.displayName = "MarkdownH4";
 const MemoH5 = memo<HeadingProps<"h5">>(
   ({ children, className, node, ...props }) => (
     <h5
-      className={cn(
-        "mt-3 mb-0.5 text-base-primary font-semibold text-sm",
-        className
-      )}
+      className={cn("mt-3 mb-0.5 text-base-primary font-semibold text-sm", className)}
       data-streamdown="heading-5"
       {...props}
     >
@@ -270,23 +232,15 @@ const MemoH6 = memo<HeadingProps<"h6">>(
 MemoH6.displayName = "MarkdownH6";
 
 type TableProps = WithNode<JSX.IntrinsicElements["table"]>;
-const TableNode = ({ node, ...props }: TableProps) => (
-  <TableComponent {...props} />
-);
+const TableNode = ({ node, ...props }: TableProps) => <TableComponent {...props} />;
 
-const MemoTable = memo<TableProps>(TableNode, (p, n) =>
-  sameClassAndNode(p, n)
-);
+const MemoTable = memo<TableProps>(TableNode, (p, n) => sameClassAndNode(p, n));
 MemoTable.displayName = "MarkdownTable";
 
 type TheadProps = WithNode<JSX.IntrinsicElements["thead"]>;
 const MemoThead = memo<TheadProps>(
   ({ children, className, node, ...props }: TheadProps) => (
-    <thead
-      className={cn("bg-base-active/80", className)}
-      data-streamdown="table-header"
-      {...props}
-    >
+    <thead className={cn("bg-base-active/80", className)} data-streamdown="table-header" {...props}>
       {children}
     </thead>
   ),
@@ -328,10 +282,7 @@ type ThProps = WithNode<JSX.IntrinsicElements["th"]>;
 const MemoTh = memo<ThProps>(
   ({ children, className, node, ...props }: ThProps) => (
     <th
-      className={cn(
-        "whitespace-nowrap px-4 py-2 text-left font-medium text-sm",
-        className
-      )}
+      className={cn("whitespace-nowrap px-4 py-2 text-start font-medium text-sm", className)}
       data-streamdown="table-header-cell"
       {...props}
     >
@@ -345,11 +296,7 @@ MemoTh.displayName = "MarkdownTh";
 type TdProps = WithNode<JSX.IntrinsicElements["td"]>;
 const MemoTd = memo<TdProps>(
   ({ children, className, node, ...props }: TdProps) => (
-    <td
-      className={cn("px-4 py-2 text-sm", className)}
-      data-streamdown="table-cell"
-      {...props}
-    >
+    <td className={cn("px-4 py-2 text-sm", className)} data-streamdown="table-cell" {...props}>
       {children}
     </td>
   ),
@@ -362,7 +309,7 @@ const MemoBlockquote = memo<BlockquoteProps>(
   ({ children, className, node, ...props }: BlockquoteProps) => (
     <blockquote
       className={cn(
-        "my-4 border-base-subtle/30 border-l-4 pl-4 text-base-subtle italic",
+        "my-4 border-base-subtle/30 border-s-4 ps-4 text-base-subtle italic",
         className
       )}
       data-streamdown="blockquote"
@@ -378,11 +325,7 @@ MemoBlockquote.displayName = "MarkdownBlockquote";
 type SupProps = WithNode<JSX.IntrinsicElements["sup"]>;
 const MemoSup = memo<SupProps>(
   ({ children, className, node, ...props }: SupProps) => (
-    <sup
-      className={cn("text-sm", className)}
-      data-streamdown="superscript"
-      {...props}
-    >
+    <sup className={cn("text-sm", className)} data-streamdown="superscript" {...props}>
       {children}
     </sup>
   ),
@@ -393,11 +336,7 @@ MemoSup.displayName = "MarkdownSup";
 type SubProps = WithNode<JSX.IntrinsicElements["sub"]>;
 const MemoSub = memo<SubProps>(
   ({ children, className, node, ...props }: SubProps) => (
-    <sub
-      className={cn("text-sm", className)}
-      data-streamdown="subscript"
-      {...props}
-    >
+    <sub className={cn("text-sm", className)} data-streamdown="subscript" {...props}>
       {children}
     </sub>
   ),
@@ -448,18 +387,13 @@ const MemoSection = memo<SectionProps>(
                 : [itemChild.props.children];
 
               for (const grandChild of grandChildren) {
-                if (
-                  typeof grandChild === "string" &&
-                  grandChild.trim() !== ""
-                ) {
+                if (typeof grandChild === "string" && grandChild.trim() !== "") {
                   hasContent = true;
                   break;
                 }
                 if (isValidElement(grandChild)) {
                   // If it's not a backref link, it's content
-                  if (
-                    grandChild.props?.["data-footnote-backref"] === undefined
-                  ) {
+                  if (grandChild.props?.["data-footnote-backref"] === undefined) {
                     hasContent = true;
                     break;
                   }
@@ -475,7 +409,7 @@ const MemoSection = memo<SectionProps>(
 
       // Process children to filter out empty footnotes
       const processedChildren = Array.isArray(children)
-        ? children.map(child => {
+        ? children.map((child) => {
             if (!isValidElement(child)) return child;
 
             // If this is an <ol> containing footnote list items
@@ -509,7 +443,7 @@ const MemoSection = memo<SectionProps>(
 
       // Check if we filtered out all content
       const hasAnyContent = Array.isArray(processedChildren)
-        ? processedChildren.some(child => child !== null)
+        ? processedChildren.some((child) => child !== null)
         : processedChildren !== null;
 
       if (!hasAnyContent) {
@@ -539,18 +473,15 @@ const CodeComponent = ({
   className,
   children,
   ...props
-}: DetailedHTMLProps<HTMLAttributes<HTMLElement>, HTMLElement> &
-  ExtraProps) => {
+}: DetailedHTMLProps<HTMLAttributes<HTMLElement>, HTMLElement> & ExtraProps) => {
   const inline = node?.position?.start.line === node?.position?.end.line;
 
   if (inline) {
     return (
       <code
-        className={cn(
-          "rounded bg-base-active px-1.5 py-0.5 font-mono text-sm",
-          className
-        )}
+        className={cn("rounded bg-base-active px-1.5 py-0.5 font-mono text-sm", className)}
         data-streamdown="inline-code"
+        dir="ltr"
         {...props}
       >
         {children}
@@ -558,9 +489,8 @@ const CodeComponent = ({
     );
   }
 
-  const match =
-    typeof className === "string" ? className.match(LANGUAGE_REGEX) : null;
-  const language = (match?.at(1) ?? "");
+  const match = typeof className === "string" ? className.match(LANGUAGE_REGEX) : null;
+  const language = match?.at(1) ?? "";
 
   // Extract code content from children safely
   let code = "";
@@ -588,21 +518,15 @@ const CodeComponent = ({
   );
 };
 
-const MemoCode = memo<
-  DetailedHTMLProps<HTMLAttributes<HTMLElement>, HTMLElement> & ExtraProps
->(
+const MemoCode = memo<DetailedHTMLProps<HTMLAttributes<HTMLElement>, HTMLElement> & ExtraProps>(
   CodeComponent,
   (p, n) => sameClassAndNode(p, n)
 );
 MemoCode.displayName = "MarkdownCode";
 
 const MemoImg = memo<
-  DetailedHTMLProps<ImgHTMLAttributes<HTMLImageElement>, HTMLImageElement> &
-    ExtraProps
->(
-  ImageComponent,
-  (p, n) => sameClassAndNode(p, n)
-);
+  DetailedHTMLProps<ImgHTMLAttributes<HTMLImageElement>, HTMLImageElement> & ExtraProps
+>(ImageComponent, (p, n) => sameClassAndNode(p, n));
 
 MemoImg.displayName = "MarkdownImg";
 
@@ -614,25 +538,31 @@ const MemoParagraph = memo<ParagraphProps>(
     // (since our ImageComponent returns a <div>, which cannot be nested inside <p>)
 
     // Handle both array and single child cases
-    const childArray: ReactNode[] = Array.isArray(children)
-      ? children
-      : [children];
+    const childArray: ReactNode[] = Array.isArray(children) ? children : [children];
 
     // Filter out null/undefined/empty values
     const validChildren = childArray.filter(
-      child => child !== null && child !== undefined && child !== ""
+      (child) => child !== null && child !== undefined && child !== ""
     );
 
     // Check if the paragraph contains only any image elements
     if (
-      validChildren.some(child => isValidElement(child) && (child as ReactElement<WithNode<any>>)?.props?.node?.tagName === "img")
+      validChildren.some(
+        (child) =>
+          isValidElement(child) &&
+          (child as ReactElement<WithNode<any>>)?.props?.node?.tagName === "img"
+      )
     ) {
-      // If only 1 image, render without wrapping 
+      // If only 1 image, render without wrapping
       if (validChildren.length === 1) {
         return <>{children}</>;
       }
       // If >1 image, render a div for correctness
-      return <div className={cn("text-sm", className)} {...props}>{children}</div>;
+      return (
+        <div className={cn("text-sm", className)} {...props}>
+          {children}
+        </div>
+      );
     }
 
     return (

@@ -1,20 +1,18 @@
-import {
-  ReadonlySignal,
-  useComputed,
-  useSignal,
-  useSignalEffect,
-} from "@preact/signals";
+import { ReadonlySignal, useComputed, useSignal, useSignalEffect } from "@preact/signals";
 import { TinyColor } from "@ctrl/tinycolor";
 import { ComponentChildren } from "preact";
 import { createContext } from "preact/compat";
 import {
   DefaultStyles,
+  parseDefaultSize,
+  parseLayout,
   parsePlacement,
   parseVariant,
   type SyntaxHighlightTheme,
   type WidgetConfig,
 } from "../types/config";
 import { useAttribute } from "./attributes";
+import { useOrchestrator } from "./orchestrator-config";
 import { useServerLocation } from "./server-location";
 
 import { useContextSafely } from "../utils/useContextSafely";
@@ -23,10 +21,33 @@ import { parseBoolAttribute } from "../types/attributes";
 import { useLanguageConfig } from "./language-config";
 import { useConversation } from "./conversation";
 import { useSessionConfig, useSessionPresentation } from "./session-config";
+import { interpolateDynamicVariables, parseDynamicVariables } from "../utils/dynamicVariables";
 
-const WidgetConfigContext = createContext<ReadonlySignal<WidgetConfig> | null>(
-  null
-);
+const WidgetConfigContext = createContext<ReadonlySignal<WidgetConfig> | null>(null);
+
+// Self-hosted orchestrators have no HTTP API to serve a widget appearance config.
+const DefaultOrchestratorWidgetConfig: WidgetConfig = {
+  variant: "full",
+  placement: "bottom-right",
+  avatar: {
+    type: "orb",
+    color_1: "#2792dc",
+    color_2: "#9ce6e6",
+  },
+  feedback_mode: "none",
+  language: "en",
+  mic_muting_enabled: false,
+  transcript_enabled: true,
+  text_input_enabled: true,
+  default_expanded: false,
+  always_expanded: false,
+  dismissible: false,
+  text_contents: {},
+  language_presets: {},
+  disable_banner: false,
+  text_only: false,
+  supports_text_only: true,
+};
 
 interface WidgetConfigProviderProps {
   children: ComponentChildren;
@@ -38,6 +59,7 @@ export function WidgetConfigProvider({ children }: WidgetConfigProviderProps) {
   const overrideConfig = useAttribute("override-config");
   const signedUrl = useAttribute("signed-url");
   const environment = useAttribute("environment");
+  const orchestrator = useOrchestrator();
   const fetchedConfig = useSignal<WidgetConfig | null>(null);
 
   useSignalEffect(() => {
@@ -49,10 +71,12 @@ export function WidgetConfigProvider({ children }: WidgetConfigProviderProps) {
           return;
         }
       } catch (error: any) {
-        console.error(
-          `[ConversationalAI] Cannot parse override-config: ${error?.message}`
-        );
+        console.error(`[ConversationalAI] Cannot parse override-config: ${error?.message}`);
       }
+    }
+    if (orchestrator.enabled.value) {
+      fetchedConfig.value = structuredClone(DefaultOrchestratorWidgetConfig);
+      return;
     }
     let currentAgentId: string | undefined = agentId.value;
     let conversationSignature: string | undefined;
@@ -75,12 +99,12 @@ export function WidgetConfigProvider({ children }: WidgetConfigProviderProps) {
       conversationSignature,
       environment: environment.value,
     })
-      .then(config => {
+      .then((config) => {
         if (!abort.signal.aborted) {
           fetchedConfig.value = config;
         }
       })
-      .catch(error => {
+      .catch((error) => {
         console.error(
           `[ConversationalAI] Cannot fetch config for agent ${agentId.value}: ${error?.message}`
         );
@@ -109,6 +133,14 @@ export function WidgetConfigProvider({ children }: WidgetConfigProviderProps) {
   const showAgentStatus = useAttribute("show-agent-status");
   const showConversationId = useAttribute("show-conversation-id");
   const disableBanner = useAttribute("disable-banner");
+  const showResizeButton = useAttribute("show-resize-button");
+  const mobileFullscreen = useAttribute("mobile-fullscreen");
+  const defaultSize = useAttribute("default-size");
+  const expandOnCarousel = useAttribute("expand-on-carousel");
+  const layout = useAttribute("layout");
+  const transcriptSpeechSync = useAttribute("transcript-speech-sync");
+  const endConfirmation = useAttribute("end-confirmation");
+  const showLanguageSelectorOnTrigger = useAttribute("show-language-selector-on-trigger");
 
   const value = useComputed<WidgetConfig | null>(() => {
     if (!fetchedConfig.value) {
@@ -120,49 +152,51 @@ export function WidgetConfigProvider({ children }: WidgetConfigProviderProps) {
     const patchedTermsKey = termsKey.value ?? fetchedConfig.value.terms_key;
 
     const textOnly =
-      parseBoolAttribute(overrideTextOnly.value) ??
-      fetchedConfig.value.text_only ??
-      false;
+      parseBoolAttribute(overrideTextOnly.value) ?? fetchedConfig.value.text_only ?? false;
 
     const patchedMicMuting =
-      parseBoolAttribute(micMuting.value) ??
-      fetchedConfig.value.mic_muting_enabled;
+      parseBoolAttribute(micMuting.value) ?? fetchedConfig.value.mic_muting_enabled;
     const patchedTranscript =
-      parseBoolAttribute(transcript.value) ??
-      fetchedConfig.value.transcript_enabled;
+      parseBoolAttribute(transcript.value) ?? fetchedConfig.value.transcript_enabled;
     const patchedTextInput =
-      parseBoolAttribute(textInput.value) ??
-      fetchedConfig.value.text_input_enabled;
+      parseBoolAttribute(textInput.value) ?? fetchedConfig.value.text_input_enabled;
+    const patchedLayout = parseLayout(layout.value ?? fetchedConfig.value.layout);
+    const isPage = patchedLayout === "page";
     const patchedAlwaysExpanded =
-      parseBoolAttribute(alwaysExpanded.value) ??
-      fetchedConfig.value.always_expanded ??
-      false;
+      parseBoolAttribute(alwaysExpanded.value) ?? fetchedConfig.value.always_expanded ?? false;
     const patchedDefaultExpanded =
-      parseBoolAttribute(defaultExpanded.value) ??
-      fetchedConfig.value.default_expanded ??
-      false;
+      parseBoolAttribute(defaultExpanded.value) ?? fetchedConfig.value.default_expanded ?? false;
     const patchedDismissible =
-      parseBoolAttribute(dismissible.value) ??
-      fetchedConfig.value.dismissible ??
-      false;
+      parseBoolAttribute(dismissible.value) ?? fetchedConfig.value.dismissible ?? false;
     const patchedStripAudioTags =
-      parseBoolAttribute(stripAudioTags.value) ??
-      fetchedConfig.value.strip_audio_tags ??
-      !textOnly;
-    const patchedUseRtc =
-      parseBoolAttribute(useRtc.value) ?? fetchedConfig.value.use_rtc ?? false;
+      parseBoolAttribute(stripAudioTags.value) ?? fetchedConfig.value.strip_audio_tags ?? !textOnly;
+    const patchedUseRtc = parseBoolAttribute(useRtc.value) ?? fetchedConfig.value.use_rtc ?? false;
     const patchedShowAgentStatus =
-      parseBoolAttribute(showAgentStatus.value) ??
-      fetchedConfig.value.show_agent_status ??
-      false;
+      parseBoolAttribute(showAgentStatus.value) ?? fetchedConfig.value.show_agent_status ?? false;
     const patchedShowConversationId =
       parseBoolAttribute(showConversationId.value) ??
       fetchedConfig.value.show_conversation_id ??
       true;
     const patchedDisableBanner =
-      parseBoolAttribute(disableBanner.value) ??
-      fetchedConfig.value.disable_banner ??
+      parseBoolAttribute(disableBanner.value) ?? fetchedConfig.value.disable_banner ?? false;
+    const patchedShowResizeButton =
+      parseBoolAttribute(showResizeButton.value) ?? fetchedConfig.value.show_resize_button ?? true;
+    const patchedMobileFullscreen =
+      parseBoolAttribute(mobileFullscreen.value) ?? fetchedConfig.value.mobile_fullscreen ?? true;
+    const patchedExpandOnCarousel =
+      parseBoolAttribute(expandOnCarousel.value) ?? fetchedConfig.value.expand_on_carousel ?? false;
+    const patchedTranscriptSpeechSync =
+      parseBoolAttribute(transcriptSpeechSync.value) ??
+      fetchedConfig.value.transcript_speech_sync_enabled ??
+      true;
+    const patchedEndConfirmation =
+      parseBoolAttribute(endConfirmation.value) ??
+      fetchedConfig.value.end_confirmation_enabled ??
       false;
+    const patchedShowLanguageSelectorOnTrigger =
+      parseBoolAttribute(showLanguageSelectorOnTrigger.value) ??
+      fetchedConfig.value.show_language_selector_on_trigger ??
+      true;
 
     return {
       ...fetchedConfig.value,
@@ -170,16 +204,26 @@ export function WidgetConfigProvider({ children }: WidgetConfigProviderProps) {
       placement: parsePlacement(patchedPlacement),
       terms_key: patchedTermsKey,
       mic_muting_enabled: !textOnly && patchedMicMuting,
-      transcript_enabled: textOnly || patchedTranscript,
-      text_input_enabled: textOnly || patchedTextInput,
-      always_expanded: patchedAlwaysExpanded,
+      // A page always shows the chat
+      transcript_enabled: textOnly || isPage || patchedTranscript,
+      text_input_enabled: textOnly || isPage || patchedTextInput,
+      // A page has nothing to collapse into or dismiss to
+      always_expanded: isPage || patchedAlwaysExpanded,
       default_expanded: patchedDefaultExpanded,
-      dismissible: patchedDismissible,
+      dismissible: !isPage && patchedDismissible,
       strip_audio_tags: patchedStripAudioTags,
       use_rtc: patchedUseRtc,
       show_agent_status: patchedShowAgentStatus,
       show_conversation_id: patchedShowConversationId,
       disable_banner: patchedDisableBanner,
+      show_resize_button: !isPage && patchedShowResizeButton,
+      mobile_fullscreen: patchedMobileFullscreen,
+      default_size: parseDefaultSize(defaultSize.value ?? fetchedConfig.value.default_size),
+      expand_on_carousel: patchedExpandOnCarousel,
+      layout: patchedLayout,
+      transcript_speech_sync_enabled: patchedTranscriptSpeechSync,
+      end_confirmation_enabled: patchedEndConfirmation,
+      show_language_selector_on_trigger: patchedShowLanguageSelectorOnTrigger,
     };
   });
 
@@ -202,9 +246,7 @@ export function useTextOnly() {
   const override = useAttribute("override-text-only");
   const config = useWidgetConfig();
 
-  return useComputed(
-    () => parseBoolAttribute(override.value) ?? config.value.text_only ?? false
-  );
+  return useComputed(() => parseBoolAttribute(override.value) ?? config.value.text_only ?? false);
 }
 
 export function useIsConversationTextOnly() {
@@ -225,13 +267,31 @@ export function useFirstMessage() {
   const override = useAttribute("override-first-message");
   const config = useWidgetConfig();
   const { language } = useLanguageConfig();
-  return useComputed(
-    () =>
+  const dynamicVariablesJSON = useAttribute("dynamic-variables");
+  return useComputed(() => {
+    const firstMessage =
       override.value ??
-      config.value.language_presets?.[language.value.languageCode]
-        ?.first_message ??
+      config.value.language_presets?.[language.value.languageCode]?.first_message ??
       presentation.value?.agent?.firstMessage ??
       config.value.first_message ??
+      null;
+    if (firstMessage == null) {
+      return null;
+    }
+    return interpolateDynamicVariables(
+      firstMessage,
+      parseDynamicVariables(dynamicVariablesJSON.value)
+    );
+  });
+}
+
+export function useFirstMessageRichContent() {
+  const config = useWidgetConfig();
+  const { language } = useLanguageConfig();
+  return useComputed(
+    () =>
+      config.value.language_presets?.[language.value.languageCode]?.first_message_rich_content ??
+      config.value.first_message_rich_content ??
       null
   );
 }
@@ -241,11 +301,41 @@ export function useTextInputEnabled() {
   return useComputed(() => config.value.text_input_enabled ?? false);
 }
 
+export function useTriggerEntryPoints() {
+  const textOnly = useTextOnly();
+  return {
+    showCall: useComputed(() => !textOnly.value),
+    showMessage: useTextInputEnabled(),
+  };
+}
+
+export function useFileInputEnabled() {
+  const config = useWidgetConfig();
+  const orchestrator = useOrchestrator();
+  // File uploads post to the ElevenLabs cloud API, which orchestrator sessions must never call.
+  return useComputed(
+    () => !orchestrator.enabled.value && (config.value.file_input_config?.enabled ?? false)
+  );
+}
+
+export function useFileInputMaxFiles() {
+  const config = useWidgetConfig();
+  return useComputed(() => config.value.file_input_config?.max_files_per_conversation ?? null);
+}
+
 export function useLocalizedTerms() {
   const config = useWidgetConfig();
   const { language } = useLanguageConfig();
 
   return useComputed(() => {
+    if (config.value.terms_html == null && config.value.terms_text == null) {
+      return {
+        terms_html: undefined,
+        terms_text: undefined,
+        terms_key: undefined,
+      };
+    }
+
     const languagePreset = config.value.language_presets?.[language.value.languageCode];
 
     return {
@@ -263,7 +353,11 @@ export function useWebRTC() {
 
 export function useEndFeedbackType() {
   const config = useWidgetConfig();
-  return useComputed(() => config.value.end_feedback?.type ?? null);
+  const orchestrator = useOrchestrator();
+  // End-of-call feedback posts to the ElevenLabs cloud API, which orchestrator sessions must never call.
+  return useComputed(() =>
+    orchestrator.enabled.value ? null : (config.value.end_feedback?.type ?? null)
+  );
 }
 
 export interface MarkdownLinkConfig {
@@ -284,16 +378,16 @@ export function useMarkdownLinkConfig() {
     if (overrideHosts.value) {
       allowedHosts = overrideHosts.value
         .split(",")
-        .map(d => d.trim())
+        .map((d) => d.trim())
         .filter(Boolean);
     } else {
       const hosts = config.value.markdown_link_allowed_hosts;
       if (hosts && hosts.length > 0) {
-        const hasWildcard = hosts.some(h => h.hostname === "*");
+        const hasWildcard = hosts.some((h) => h.hostname === "*");
         if (hasWildcard) {
           allowedHosts = ["*"];
         } else {
-          allowedHosts = hosts.map(h => h.hostname);
+          allowedHosts = hosts.map((h) => h.hostname);
         }
       }
     }
@@ -304,9 +398,7 @@ export function useMarkdownLinkConfig() {
       true;
 
     const allowHttp =
-      parseBoolAttribute(overrideAllowHttp.value) ??
-      config.value.markdown_link_allow_http ??
-      true;
+      parseBoolAttribute(overrideAllowHttp.value) ?? config.value.markdown_link_allow_http ?? true;
 
     return { allowedHosts, includeWww, allowHttp };
   });
@@ -323,13 +415,19 @@ export function useSyntaxTheme() {
       return explicitValue;
     }
     // Auto-detect based on base_active background color
-    const baseActive =
-      config.value.styles?.base_active ?? DefaultStyles.base_active;
+    const baseActive = config.value.styles?.base_active ?? DefaultStyles.base_active;
     const color = new TinyColor(baseActive);
 
     if (!color.isValid) {
       return "light";
     }
     return color.isDark() ? "dark" : "light";
+  });
+}
+
+export function useAllowEvents() {
+  const allowEvents = useAttribute("allow-events");
+  return useComputed(() => {
+    return parseBoolAttribute(allowEvents.value) ?? false;
   });
 }

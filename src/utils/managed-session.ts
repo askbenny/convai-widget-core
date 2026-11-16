@@ -77,12 +77,14 @@ export function applyManagedSession(config: SessionConfig, session: ManagedSessi
     conversationToken: _token,
     origin: _origin,
     signedUrl: _url,
+    orchestrator: _orchestrator,
     ...base
   } = config as SessionConfig & {
     agentId?: string;
     conversationToken?: string;
     origin?: string;
     signedUrl?: string;
+    orchestrator?: unknown;
   };
   const requested = config.overrides;
   return {

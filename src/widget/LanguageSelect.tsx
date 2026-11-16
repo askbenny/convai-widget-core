@@ -21,11 +21,11 @@ export function LanguageSelect({ children, ...rest }: LanguageSelectProps) {
     <Select.Root
       open={open}
       value={language.value.languageCode}
-      onValueChange={value => {
+      onValueChange={(value) => {
         setLanguage(value as Language);
         setOpen(false);
       }}
-      onOpenChange={open => {
+      onOpenChange={(open) => {
         if (open) setOpen(true);
       }}
     >
@@ -46,7 +46,7 @@ export function LanguageSelect({ children, ...rest }: LanguageSelectProps) {
             <Icon size="xs" name="chevron-up" />
           </Select.ScrollUpButton>
           <Select.Viewport className="p-1.5">
-            {options.value.map(language => (
+            {options.value.map((language) => (
               <Select.Item
                 key={language.languageCode}
                 value={language.languageCode}

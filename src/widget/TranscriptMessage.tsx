@@ -1,4 +1,5 @@
 import { clsx } from "clsx";
+import { Button } from "../components/Button";
 import { Feedback } from "../components/Feedback";
 import { Icon } from "../components/Icon";
 import { InOutTransition } from "../components/InOutTransition";
@@ -13,10 +14,14 @@ import { useTextContents } from "../contexts/text-contents";
 import {
   useMarkdownLinkConfig,
   useEndFeedbackType,
+  useIsConversationTextOnly,
   useWidgetConfig,
 } from "../contexts/widget-config";
 import { stripAudioTags } from "../utils/stripAudioTags";
 import { WidgetStreamdown } from "../markdown";
+import { isImageMimeType } from "./useFileUpload";
+import { ShimmeringText } from "../components/ShimmeringText";
+import { RichContentRenderer } from "../rich-content/RichContentRenderer";
 
 interface TranscriptMessageProps {
   entry: DisplayTranscriptEntry;
@@ -31,17 +36,32 @@ function AgentMessageBubble({
   const linkConfig = useMarkdownLinkConfig();
   const config = useWidgetConfig();
 
-  const displayMessage =
-    config.value.strip_audio_tags && !entry.isText
-      ? stripAudioTags(entry.message)
-      : entry.message;
+  const isVoiceMessage = !entry.isText;
+  const shouldStripAudioTags = config.value.strip_audio_tags && isVoiceMessage;
+  const shouldStyleAudioTags = isVoiceMessage && !shouldStripAudioTags;
+
+  const displayMessage = shouldStripAudioTags ? stripAudioTags(entry.message) : entry.message;
+  const attachments = entry.attachments?.filter((attachment) => isHttpsUrl(attachment.url));
 
   return (
     <div className="pr-8">
       {displayMessage && (
-        <WidgetStreamdown linkConfig={linkConfig.value}>
+        <WidgetStreamdown linkConfig={linkConfig.value} styleAudioTags={shouldStyleAudioTags}>
           {displayMessage}
         </WidgetStreamdown>
+      )}
+      {!!attachments?.length && (
+        <div className={clsx("flex flex-col items-start gap-1.5", displayMessage && "mt-2")}>
+          {attachments.map((attachment, index) => (
+            <FileAttachment
+              key={`${index}-${attachment.url}`}
+              fileName={attachment.name}
+              mimeType={attachment.mime_type ?? ""}
+              previewUrl={attachment.url}
+              href={attachment.url}
+            />
+          ))}
+        </div>
       )}
       {entry.toolStatus && (
         <div className={displayMessage ? "mt-2" : undefined}>
@@ -52,20 +72,27 @@ function AgentMessageBubble({
   );
 }
 
+function isHttpsUrl(url: string): boolean {
+  try {
+    return new URL(url).protocol === "https:";
+  } catch {
+    return false;
+  }
+}
+
 function UserMessageBubble({
   entry,
 }: {
   entry: Extract<DisplayTranscriptEntry, { type: "message" }>;
 }) {
   const { previewUrl } = useAvatarConfig();
+  const fileInput = entry.fileInput;
 
   return (
     <div
       className={clsx(
         "flex gap-2.5 transition-[opacity,transform] duration-200 data-hidden:opacity-0 data-hidden:scale-75",
-        entry.role === "user"
-          ? "justify-end pl-16 origin-top-right"
-          : "pr-16 origin-top-left"
+        entry.role === "user" ? "justify-end pl-16 origin-top-right" : "pr-16 origin-top-left"
       )}
     >
       {entry.role === "agent" && (
@@ -75,18 +102,109 @@ function UserMessageBubble({
           className="bg-base-border shrink-0 w-5 h-5 rounded-full"
         />
       )}
-      <div
-        dir="auto"
-        className={clsx(
-          "px-3 py-2.5 rounded-bubble text-sm min-w-0 wrap-break-word whitespace-pre-wrap",
-          entry.role === "user"
-            ? "bg-accent text-accent-primary"
-            : "bg-base-active text-base-primary"
+      <div className="flex flex-col items-end gap-1.5 min-w-0">
+        {fileInput && (
+          <FileAttachment
+            fileName={fileInput.fileName}
+            mimeType={fileInput.mimeType}
+            previewUrl={fileInput.previewUrl}
+          />
         )}
-      >
-        {entry.message}
+        {entry.message && (
+          <div
+            dir="auto"
+            className={clsx(
+              "px-3 py-2.5 rounded-bubble text-sm min-w-0 wrap-break-word whitespace-pre-wrap",
+              entry.role === "user"
+                ? "bg-accent text-accent-primary"
+                : "bg-base-active text-base-primary"
+            )}
+          >
+            {entry.message}
+          </div>
+        )}
       </div>
     </div>
+  );
+}
+
+/**
+ * Renders one file bubble. `href` marks the file as remotely hosted (an agent
+ * attachment rather than the user's own pending upload), so it opens in a new
+ * tab and gets interactive styling instead of the user bubble's accent fill.
+ */
+function FileAttachment({
+  fileName,
+  mimeType,
+  previewUrl,
+  href,
+}: {
+  fileName: string;
+  mimeType: string;
+  previewUrl: string | null;
+  href?: string;
+}) {
+  const isImage = isImageMimeType(mimeType);
+
+  if (isImage && previewUrl) {
+    const image = (
+      <img src={previewUrl} alt={fileName} className="max-w-[180px] rounded-input object-cover" />
+    );
+
+    return href ? (
+      <a
+        href={href}
+        target="_blank"
+        rel="noopener noreferrer"
+        className="rounded-bubble border border-base-border shadow-sm p-1 focus-ring"
+      >
+        {image}
+      </a>
+    ) : (
+      <div className="rounded-bubble border border-base-border shadow-sm p-1">{image}</div>
+    );
+  }
+
+  const content = (
+    <>
+      <FileDocIcon />
+      <span className="truncate text-sm">{fileName}</span>
+    </>
+  );
+
+  return href ? (
+    <a
+      href={href}
+      target="_blank"
+      rel="noopener noreferrer"
+      className="flex items-center gap-2 px-3 py-2.5 rounded-bubble border border-base-border bg-base text-base-primary hover:bg-base-hover active:bg-base-active transition-colors duration-200 focus-ring"
+    >
+      {content}
+    </a>
+  ) : (
+    <div className="flex items-center gap-2 px-3 py-2.5 rounded-bubble bg-accent text-accent-primary">
+      {content}
+    </div>
+  );
+}
+
+function FileDocIcon() {
+  return (
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      width="16"
+      height="16"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      stroke-width="2"
+      stroke-linecap="round"
+      stroke-linejoin="round"
+      className="shrink-0 opacity-70"
+    >
+      <path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z" />
+      <path d="M14 2v4a2 2 0 0 0 2 2h4" />
+    </svg>
   );
 }
 
@@ -104,9 +222,7 @@ function DisconnectionMessage({
     <div className="px-8 flex flex-col">
       {endFeedbackType.value === "rating" && <Feedback />}
       <div className="text-xs text-base-subtle text-center transition-opacity duration-200 data-hidden:opacity-0">
-        {entry.role === "user"
-          ? text.user_ended_conversation
-          : text.agent_ended_conversation}
+        {entry.role === "user" ? text.user_ended_conversation : text.agent_ended_conversation}
         <br />
         {lastId.value && config.value.show_conversation_id && (
           <span className="break-all">
@@ -118,11 +234,7 @@ function DisconnectionMessage({
   );
 }
 
-function ErrorMessage({
-  entry,
-}: {
-  entry: Extract<DisplayTranscriptEntry, { type: "error" }>;
-}) {
+function ErrorMessage({ entry }: { entry: Extract<DisplayTranscriptEntry, { type: "error" }> }) {
   const text = useTextContents();
   const { lastId } = useConversation();
 
@@ -143,6 +255,45 @@ function ErrorMessage({
   );
 }
 
+function QueueTimeoutMessage() {
+  const text = useTextContents();
+  const { lastId } = useConversation();
+  const config = useWidgetConfig();
+
+  return (
+    <div className="px-8 text-xs text-base-subtle text-center transition-opacity duration-200 data-hidden:opacity-0">
+      {text.queue_timed_out}
+      <br />
+      {lastId.value && config.value.show_conversation_id && (
+        <span className="break-all">
+          {text.conversation_id}: {lastId.value}
+        </span>
+      )}
+    </div>
+  );
+}
+
+/** A button rather than a reconnect, since the mic needs a user gesture. */
+function ResumePromptMessage() {
+  const text = useTextContents();
+  const { continueNavigationCall, endSession } = useConversation();
+
+  return (
+    <div className="px-8 flex justify-center gap-2 transition-opacity duration-200 data-hidden:opacity-0">
+      <Button
+        variant="primary"
+        icon="phone"
+        onClick={(e) => void continueNavigationCall(e.currentTarget)}
+      >
+        {text.resume_call}
+      </Button>
+      <Button variant="outline" icon="phone-off" onClick={() => void endSession()}>
+        {text.end_call}
+      </Button>
+    </div>
+  );
+}
+
 interface ModeToggleMessageProps {
   entry: Extract<DisplayTranscriptEntry, { type: "mode_toggle" }>;
 }
@@ -152,9 +303,7 @@ function ModeToggleMessage({ entry }: ModeToggleMessageProps) {
 
   return (
     <div className="px-8 text-xs text-base-subtle text-center transition-opacity duration-200 data-hidden:opacity-0">
-      {entry.mode === "text"
-        ? text.switched_to_text_mode
-        : text.switched_to_voice_mode}
+      {entry.mode === "text" ? text.switched_to_text_mode : text.switched_to_voice_mode}
     </div>
   );
 }
@@ -183,13 +332,65 @@ function ToolCallMessage({ status }: { status: ToolCallStatusType }) {
           <InOutTransition active={true} initial={false}>
             <span className="flex items-center gap-1 transition-[opacity,transform] duration-200 data-hidden:opacity-0 data-hidden:scale-75">
               <Icon name="x" size="sm" className="shrink-0 text-base-error" />
-              <span className="text-xs text-base-error leading-4">
-                {text.agent_error}
-              </span>
+              <span className="text-xs text-base-error leading-4">{text.agent_error}</span>
             </span>
           </InOutTransition>
         )}
       </div>
+    </div>
+  );
+}
+
+function TypingIndicatorMessage({
+  entry,
+}: {
+  entry: Extract<DisplayTranscriptEntry, { type: "typing_indicator" }>;
+}) {
+  const text = useTextContents();
+  const textOnly = useIsConversationTextOnly();
+
+  if (entry.isExternalAgent) {
+    return (
+      <div className="pr-8">
+        <ShimmeringText text={text.typing_indicator.value} className="text-sm" />
+      </div>
+    );
+  }
+
+  return (
+    <div className="pr-8 origin-top-left transition-[opacity,transform] duration-200 data-hidden:opacity-0 data-hidden:scale-75">
+      <div
+        role="status"
+        className="inline-flex items-center gap-1 h-10 px-3 rounded-bubble bg-base-active"
+      >
+        <span className="sr-only">
+          {textOnly.value ? text.typing_indicator.value : text.thinking_status.value}
+        </span>
+        {[0, 160, 320].map((delay) => (
+          <span
+            key={delay}
+            aria-hidden="true"
+            className="w-[7px] h-[7px] rounded-full bg-base-primary animate-typing-dot"
+            style={{ animationDelay: `${delay}ms` }}
+          />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function RichContentMessage({
+  entry,
+}: {
+  entry: Extract<DisplayTranscriptEntry, { type: "rich_content" }>;
+}) {
+  return (
+    <div className={clsx("-mt-3", entry.component !== "carousel" && "pe-8")}>
+      <RichContentRenderer
+        component={entry.component}
+        props={entry.props}
+        richContentId={entry.richContentId}
+      />
     </div>
   );
 }
@@ -204,16 +405,25 @@ function getMessageComponent(entry: DisplayTranscriptEntry) {
   if (entry.type === "error") {
     return <ErrorMessage entry={entry} />;
   }
+  if (entry.type === "queue_timeout") {
+    return <QueueTimeoutMessage />;
+  }
+  if (entry.type === "resume_prompt") {
+    return <ResumePromptMessage />;
+  }
+  if (entry.type === "typing_indicator") {
+    return <TypingIndicatorMessage entry={entry} />;
+  }
+  if (entry.type === "rich_content") {
+    return <RichContentMessage entry={entry} />;
+  }
   if (entry.role === "agent") {
     return <AgentMessageBubble entry={entry} />;
   }
   return <UserMessageBubble entry={entry} />;
 }
 
-export function TranscriptMessage({
-  entry,
-  animateIn,
-}: TranscriptMessageProps) {
+export function TranscriptMessage({ entry, animateIn }: TranscriptMessageProps) {
   return (
     <InOutTransition initial={!animateIn} active={true}>
       {getMessageComponent(entry)}

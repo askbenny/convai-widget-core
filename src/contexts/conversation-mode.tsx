@@ -1,9 +1,4 @@
-import {
-  computed,
-  ReadonlySignal,
-  useSignal,
-  useSignalEffect,
-} from "@preact/signals";
+import { computed, ReadonlySignal, useSignal, useSignalEffect } from "@preact/signals";
 import { ComponentChildren } from "preact";
 import { createContext, useMemo } from "preact/compat";
 import { useContextSafely } from "../utils/useContextSafely";
@@ -18,17 +13,13 @@ interface ConversationModeConfig {
   isVoiceMode: ReadonlySignal<boolean>;
 }
 
-const ConversationModeContext = createContext<ConversationModeConfig | null>(
-  null
-);
+const ConversationModeContext = createContext<ConversationModeConfig | null>(null);
 
 interface ConversationModeProviderProps {
   children: ComponentChildren;
 }
 
-export function ConversationModeProvider({
-  children,
-}: ConversationModeProviderProps) {
+export function ConversationModeProvider({ children }: ConversationModeProviderProps) {
   const mode = useSignal<ConversationMode>("voice");
   const { isDisconnected, addModeToggleEntry, setVolume } = useConversation();
 
@@ -55,9 +46,7 @@ export function ConversationModeProvider({
   );
 
   return (
-    <ConversationModeContext.Provider value={value}>
-      {children}
-    </ConversationModeContext.Provider>
+    <ConversationModeContext.Provider value={value}>{children}</ConversationModeContext.Provider>
   );
 }
 

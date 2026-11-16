@@ -1,4 +1,4 @@
-import { page } from "@vitest/browser/context";
+import { page } from "vitest/browser";
 import { describe, it, beforeAll, expect, afterAll } from "vitest";
 import { Worker } from "../mocks/browser";
 import { setupWebComponent } from "../mocks/web-component";
@@ -74,8 +74,6 @@ describe("Dismiss Button", () => {
         const acceptButton = page.getByRole("button", { name: "Accept" });
         await acceptButton.click();
 
-        await startButton.click();
-
         // Dismiss button should be hidden during call
         await expect.element(dismissButton).not.toBeInTheDocument();
 
@@ -98,6 +96,8 @@ describe("Dismiss Button", () => {
         transcript: "true",
         "text-input": "true",
         "default-expanded": "true",
+        // A narrow test page would otherwise open the sheet fullscreen over the trigger.
+        "mobile-fullscreen": "false",
       });
 
       await expect.element(page.getByRole("textbox", { name: "Text message input" })).toBeVisible();

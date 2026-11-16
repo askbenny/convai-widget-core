@@ -1,5 +1,5 @@
-import type { Role } from "@elevenlabs/client";
-import type { TranscriptEntry } from "../contexts/conversation";
+import type { MessageAttachment, Role } from "@elevenlabs/client";
+import type { TranscriptEntry, TranscriptFileInput } from "../contexts/conversation";
 import type { ConversationMode } from "../contexts/conversation-mode";
 
 export const ToolCallStatus = {
@@ -19,6 +19,8 @@ export type DisplayTranscriptEntry =
       conversationIndex: number;
       eventId?: number;
       toolStatus?: ToolCallStatusType;
+      fileInput?: TranscriptFileInput | null;
+      attachments?: MessageAttachment[];
     }
   | {
       type: "disconnection";
@@ -35,16 +37,46 @@ export type DisplayTranscriptEntry =
       type: "mode_toggle";
       mode: ConversationMode;
       conversationIndex: number;
+    }
+  | {
+      type: "typing_indicator";
+      conversationIndex: number;
+      isExternalAgent: boolean;
+    }
+  | {
+      type: "queue_timeout";
+      conversationIndex: number;
+    }
+  | {
+      type: "resume_prompt";
+      conversationIndex: number;
+    }
+  | {
+      type: "rich_content";
+      component: string;
+      props: unknown;
+      conversationIndex: number;
+      eventId: number;
+      richContentId: string;
     };
 
 export interface DisplayTranscriptConfig {
   showAgentStatus: boolean;
   transcriptEnabled: boolean;
+  showRichContent: boolean;
   /** If set, prepend as the first agent message (for text-only first message). */
   firstMessage?: string;
   /** The conversationIndex to use for the prepended first message. */
   firstMessageConversationIndex?: number;
+  /** If true, append a typing indicator entry at the end. */
+  showTypingIndicator?: boolean;
+  /** If true, the AI agent owes a reply; show a typing indicator until it shows. */
+  showAgentReplyPending?: boolean;
+  /** Move the first message rich content below the first agent message. */
+  deferFirstMessageRichContent?: boolean;
 }
+
+const PERSISTING_COMPONENTS = new Set(["carousel"]);
 
 export function buildDisplayTranscript(
   entries: TranscriptEntry[],
@@ -64,18 +96,21 @@ export function buildDisplayTranscript(
   }
 
   // Collect tool statuses per eventId
+  // Event ids restart with each conversation, so statuses are scoped to one.
+  const toolKey = (entry: { conversationIndex: number; eventId?: number }) =>
+    `${entry.conversationIndex}:${entry.eventId}`;
   const toolStatuses = new Map<string, { loading: number; error: number; success: number }>();
   for (const entry of entries) {
     if (entry.type === "agent_tool_request") {
-      const s = toolStatuses.get(`${entry.conversationIndex}:${entry.eventId}`) ?? {
+      const s = toolStatuses.get(toolKey(entry)) ?? {
         loading: 0,
         error: 0,
         success: 0,
       };
       s.loading++;
-      toolStatuses.set(`${entry.conversationIndex}:${entry.eventId}`, s);
+      toolStatuses.set(toolKey(entry), s);
     } else if (entry.type === "agent_tool_response") {
-      const s = toolStatuses.get(`${entry.conversationIndex}:${entry.eventId}`);
+      const s = toolStatuses.get(toolKey(entry));
       if (s) {
         s.loading--;
         if (entry.isError) s.error++;
@@ -84,23 +119,70 @@ export function buildDisplayTranscript(
     }
   }
 
-  let toolBoundary = false;
-  for (const entry of entries) {
+  let lastUserEntryIndex = -1;
+  entries.forEach((entry, index) => {
+    if (entry.type === "message" && entry.role === "user") {
+      lastUserEntryIndex = index;
+    }
+  });
+
+  const speakingEventIds = new Set<number>();
+  const shownContentIndices = new Set<number>();
+
+  for (const [entryIndex, rawEntry] of entries.entries()) {
+    const entry =
+      rawEntry.type === "message" && rawEntry.visibleLength !== undefined
+        ? {
+            ...rawEntry,
+            message: rawEntry.message.slice(0, rawEntry.visibleLength),
+          }
+        : rawEntry;
+    if (
+      rawEntry.type === "message" &&
+      rawEntry.visibleLength !== undefined &&
+      rawEntry.visibleLength < rawEntry.message.length &&
+      rawEntry.eventId != null &&
+      !rawEntry.speechInterrupted
+    ) {
+      speakingEventIds.add(rawEntry.eventId);
+    }
+
     // Skip tool entries (consumed into status)
     if (entry.type === "agent_tool_request" || entry.type === "agent_tool_response") {
-      toolBoundary = true;
       continue;
     }
 
-    // Skip empty agent messages unless they have a tool status to display
+    if (entry.type === "rich_content") {
+      if (!config.showRichContent) continue;
+      // Wait until the text before it has been said
+      if (speakingEventIds.has(entry.eventId) && !PERSISTING_COMPONENTS.has(entry.component))
+        continue;
+      // Drop replies the user has moved past
+      if (entryIndex < lastUserEntryIndex && !PERSISTING_COMPONENTS.has(entry.component)) continue;
+      result.push(entry);
+      shownContentIndices.add(entryIndex);
+      continue;
+    }
+
+    // Skip empty agent messages unless they carry attachments or a tool status
+    // to display.
     if (
       entry.type === "message" &&
       entry.role === "agent" &&
       !entry.message &&
-      !(
-        config.showAgentStatus &&
-        entry.eventId != null &&
-        toolStatuses.has(`${entry.conversationIndex}:${entry.eventId}`)
+      !entry.attachments?.length &&
+      !(config.showAgentStatus && entry.eventId != null && toolStatuses.has(toolKey(entry)))
+    )
+      continue;
+
+    // Hide later messages of the turn until they are said
+    if (
+      entry.type === "message" &&
+      entry.visibleLength !== undefined &&
+      !entry.message &&
+      result.some(
+        (shown) =>
+          shown.type === "message" && shown.role === "agent" && shown.eventId === entry.eventId
       )
     )
       continue;
@@ -108,7 +190,14 @@ export function buildDisplayTranscript(
     // Filter non-text messages when transcript is disabled
     if (!config.transcriptEnabled && entry.type === "message" && !entry.isText) continue;
 
-    // Preserve ordinary partial/final replacement, but not across a tool boundary.
+    if (entry.type === "message" && (entry.message || entry.attachments?.length))
+      shownContentIndices.add(entryIndex);
+
+    // Fold an empty agent placeholder into the following same-turn message.
+    // Two entries sharing an eventId are otherwise distinct messages (e.g.
+    // pre-tool and post-tool replies), so they stay separate bubbles. A
+    // streaming placeholder never carries files, so an entry with attachments
+    // is a real message even when it has no text.
     const prev = result[result.length - 1];
     if (
       entry.type === "message" &&
@@ -116,27 +205,43 @@ export function buildDisplayTranscript(
       prev?.type === "message" &&
       prev.eventId === entry.eventId &&
       prev.role === entry.role &&
-      prev.conversationIndex === entry.conversationIndex &&
-      (!toolBoundary || !prev.message.trim())
+      !prev.message.trim() &&
+      !prev.attachments?.length
     ) {
       result[result.length - 1] = entry;
-      toolBoundary = false;
       continue;
     }
 
     result.push(entry);
-    toolBoundary = false;
   }
 
-  // Attach one tool status per turn, scoped to its conversation.
+  if (config.deferFirstMessageRichContent) {
+    const richContentIndex = result.findIndex(
+      (entry) => entry.type === "rich_content" && entry.richContentId === "first_message"
+    );
+    if (richContentIndex !== -1) {
+      const [richContent] = result.splice(richContentIndex, 1);
+      const firstMessageIndex = result.findIndex(
+        (entry) => entry.type === "message" && entry.role === "agent"
+      );
+      // Wait until the greeting has been said
+      const greetingSaid =
+        richContent.type === "rich_content" && !speakingEventIds.has(richContent.eventId);
+      if (firstMessageIndex !== -1 && greetingSaid) {
+        result.splice(firstMessageIndex + 1, 0, richContent);
+      }
+    }
+  }
+
+  // Attach tool status to the first agent bubble of each turn only — a turn can
+  // render as several bubbles, but the badge should appear once.
   if (config.showAgentStatus) {
     const statusAttached = new Set<string>();
     for (let i = 0; i < result.length; i++) {
       const entry = result[i];
       if (entry.type !== "message" || entry.role !== "agent" || entry.eventId == null) continue;
-      const key = `${entry.conversationIndex}:${entry.eventId}`;
-      if (statusAttached.has(key)) continue;
-      const status = toolStatuses.get(`${entry.conversationIndex}:${entry.eventId}`);
+      if (statusAttached.has(toolKey(entry))) continue;
+      const status = toolStatuses.get(toolKey(entry));
       if (!status) continue;
 
       const toolStatus: ToolCallStatusType =
@@ -146,8 +251,43 @@ export function buildDisplayTranscript(
             ? ToolCallStatus.ERROR
             : ToolCallStatus.SUCCESS;
       result[i] = { ...entry, toolStatus };
-      statusAttached.add(key);
+      statusAttached.add(toolKey(entry));
     }
+  }
+
+  // The agent replies after a tool call, except after system tools like end_call
+  let awaitedToolEventId: number | undefined;
+  for (let i = entries.length - 1; i > lastUserEntryIndex; i--) {
+    const entry = entries[i];
+    if (entry.type === "agent_tool_request") {
+      if (entry.toolType !== "system") awaitedToolEventId = entry.eventId;
+      break;
+    }
+    // Voice text and files held until they are said don't count yet
+    if (shownContentIndices.has(i)) break;
+  }
+  const awaitingToolReply = awaitedToolEventId !== undefined;
+
+  const lastShown = result[result.length - 1];
+  const lastShownIsUser = lastShown?.type === "message" && lastShown.role === "user";
+  // A loading tool badge already shows the agent is working
+  const toolBadgeLoading = result.some(
+    (shown) =>
+      shown.type === "message" &&
+      shown.eventId === awaitedToolEventId &&
+      shown.toolStatus === ToolCallStatus.LOADING
+  );
+  const agentReplyPending =
+    config.showAgentReplyPending && (lastShownIsUser || (awaitingToolReply && !toolBadgeLoading));
+
+  // Show the typing row while a human agent types or the AI agent owes a reply
+  if (config.showTypingIndicator || agentReplyPending) {
+    result.push({
+      type: "typing_indicator",
+      conversationIndex:
+        entries[entries.length - 1]?.conversationIndex ?? config.firstMessageConversationIndex ?? 0,
+      isExternalAgent: !!config.showTypingIndicator,
+    });
   }
 
   return result;

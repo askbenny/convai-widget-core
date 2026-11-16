@@ -7,11 +7,13 @@ import { Worker } from "../mocks/browser";
 import type { CustomAttributes } from "../types/attributes";
 import { AttributesProvider } from "./attributes";
 import { ServerLocationProvider } from "./server-location";
+import { OrchestratorProvider } from "./orchestrator-config";
+import { WidgetSizeProvider } from "./widget-size";
 import { WidgetConfigProvider, useFirstMessage } from "./widget-config";
 import { LanguageConfigProvider } from "./language-config";
 import { TermsProvider, useTerms } from "./terms";
 import { SessionConfigProvider, useSessionPresentation } from "./session-config";
-import { ConversationProvider, useConversation } from "./conversation";
+import { ConversationProvider, TEXT_CHAT_IDLE_TIMEOUT_MS, useConversation } from "./conversation";
 import { ShadowHostProvider } from "./shadow-host";
 
 let state: {
@@ -36,17 +38,21 @@ function mount(attributes: CustomAttributes = {}) {
       <ShadowHostProvider>
         <AttributesProvider value={{ "agent-id": "basic", ...attributes }}>
           <ServerLocationProvider>
-            <WidgetConfigProvider>
-              <LanguageConfigProvider>
-                <TermsProvider>
-                  <SessionConfigProvider>
-                    <ConversationProvider>
-                      <Probe />
-                    </ConversationProvider>
-                  </SessionConfigProvider>
-                </TermsProvider>
-              </LanguageConfigProvider>
-            </WidgetConfigProvider>
+            <OrchestratorProvider>
+              <WidgetConfigProvider>
+                <WidgetSizeProvider>
+                  <LanguageConfigProvider>
+                    <TermsProvider>
+                      <SessionConfigProvider>
+                        <ConversationProvider>
+                          <Probe />
+                        </ConversationProvider>
+                      </SessionConfigProvider>
+                    </TermsProvider>
+                  </LanguageConfigProvider>
+                </WidgetSizeProvider>
+              </WidgetConfigProvider>
+            </OrchestratorProvider>
           </ServerLocationProvider>
         </AttributesProvider>
       </ShadowHostProvider>,
@@ -185,6 +191,7 @@ async function captureSession(attributes: CustomAttributes = {}, initialMessage?
         config.onStatusChange?.({ status: "disconnected" });
       },
       sendUserMessage: () => {},
+      sendUserActivity: () => {},
     } as unknown as Conversation;
   });
   const previous = state;
@@ -314,5 +321,43 @@ describe("upstream transcript fixes with managed sessions", () => {
     ]);
     agentMessage(sdk.mock.calls[1][0], "New reply");
     expect(messages()).toEqual(["New reply"]);
+  });
+});
+
+// Signal effects rerun on the next animation frame.
+function nextFrame() {
+  return new Promise((resolve) => requestAnimationFrame(() => resolve(null)));
+}
+
+describe("idle text chats", () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it("ends a text chat after the idle wait, counting typing as activity", async () => {
+    // No initial message: it is sent on a short real timer that would land mid-test.
+    const config = await captureSession({ "agent-id": "text_only" });
+    expect(state.conversation.conversationTextOnly.peek()).toBe(true);
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    agentMessage(config, "Answer");
+    await nextFrame();
+    await vi.advanceTimersByTimeAsync(TEXT_CHAT_IDLE_TIMEOUT_MS - 1);
+    expect(state.conversation.isDisconnected.peek()).toBe(false);
+    state.conversation.sendUserActivity();
+    await nextFrame();
+    await vi.advanceTimersByTimeAsync(TEXT_CHAT_IDLE_TIMEOUT_MS - 1);
+    expect(state.conversation.isDisconnected.peek()).toBe(false);
+    await vi.advanceTimersByTimeAsync(1);
+    expect(state.conversation.isDisconnected.peek()).toBe(true);
+    expect(state.conversation.transcript.peek().at(-1)).toMatchObject({ type: "disconnection" });
+  });
+
+  it("leaves voice conversations to the agent's own limits", async () => {
+    const config = await captureSession();
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    agentMessage(config, "Spoken answer");
+    await nextFrame();
+    await vi.advanceTimersByTimeAsync(TEXT_CHAT_IDLE_TIMEOUT_MS * 4);
+    expect(state.conversation.isDisconnected.peek()).toBe(false);
   });
 });

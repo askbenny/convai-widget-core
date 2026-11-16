@@ -27,7 +27,7 @@ export function TermsProvider({ children }: TermsProviderProps) {
 
   const termsShown = useSignal(false);
   const termsAcceptedState = useSignal(false);
-  
+
   const value = useMemo(() => {
     const termsAccepted = computed(
       () => !localizedTerms.value.terms_html || termsAcceptedState.value
@@ -39,7 +39,7 @@ export function TermsProvider({ children }: TermsProviderProps) {
       termsAccepted,
       dismissTerms: () => {
         termsShown.value = false;
-        termsPromises.forEach(value => value.reject());
+        termsPromises.forEach((value) => value.reject());
         termsPromises = [];
       },
       acceptTerms: () => {
@@ -50,7 +50,7 @@ export function TermsProvider({ children }: TermsProviderProps) {
           localStorage.setItem(key, "true");
         }
 
-        termsPromises.forEach(value => value.resolve());
+        termsPromises.forEach((value) => value.resolve());
         termsPromises = [];
       },
       requestTerms: async () => {
@@ -70,9 +70,7 @@ export function TermsProvider({ children }: TermsProviderProps) {
     termsAcceptedState.value = termsAlreadyAccepted;
   });
 
-  return (
-    <TermsContext.Provider value={value}>{children}</TermsContext.Provider>
-  );
+  return <TermsContext.Provider value={value}>{children}</TermsContext.Provider>;
 }
 
 export function useTerms() {

@@ -1,5 +1,13 @@
-import { Conversation, Mode, Role, SessionConfig, Status } from "@elevenlabs/client";
-import { computed, signal, useSignalEffect } from "@preact/signals";
+import {
+  Conversation,
+  MessageAttachment,
+  Mode,
+  Role,
+  SendUserMessageOptions,
+  SessionConfig,
+  Status,
+} from "@elevenlabs/client";
+import { computed, signal, useComputed, useSignalEffect } from "@preact/signals";
 import { ComponentChildren } from "preact";
 import { createContext, useMemo } from "preact/compat";
 import { useEffect, useRef } from "react";
@@ -7,94 +15,63 @@ import { useSessionConfig, useSessionPreparation } from "./session-config";
 
 import { useContextSafely } from "../utils/useContextSafely";
 import { useTerms } from "./terms";
-import { useFirstMessage, useWidgetConfig } from "./widget-config";
+import { useFirstMessage, useFirstMessageRichContent, useWidgetConfig } from "./widget-config";
+import type { FirstMessageRichContent } from "../types/config";
 import { ConversationMode } from "./conversation-mode";
 import { useShadowHost } from "./shadow-host";
+import {
+  configurePersistentSession,
+  createStoredSession,
+  isFinalDisconnect,
+  isPersistentSessionRefused,
+} from "../utils/persistentSession";
+import {
+  buildResumeContext,
+  createNavigationResumeStore,
+  isFirstMessageOverrideRefused,
+  toTranscriptEntries,
+  type NavigationResumeRecord,
+} from "../utils/navigationResume";
+import { SpeechReveal } from "../utils/speechReveal";
+import { AgentThinking } from "../utils/agentThinking";
 
 const FIRST_MESSAGE_EVENT_ID = 1;
 
-type AgentEventId = number | undefined;
+// A text chat stays open while the tab does, so an idle one would otherwise run
+// to the agent's maximum duration (usually 10 minutes) and be counted that long.
+export const TEXT_CHAT_IDLE_TIMEOUT_MS = 3 * 60 * 1000;
 
-type AgentStream = {
-  kind: "stream";
+type AgentResponseState = Map<string, { index: number; isStreaming: boolean }>;
+
+// Compatibility path for orchestrators released before response_id support.
+type LegacyAgentStream = {
   index: number;
-  eventId: AgentEventId;
+  eventId: number;
 };
 
-type IgnoredAgentStream = {
-  kind: "ignored";
-  eventId: AgentEventId;
+type LegacyAgentResponseState = {
+  pending: LegacyAgentStream[];
+  active: LegacyAgentStream | { eventId: number } | null;
+  unmatchedResponse: {
+    index: number;
+    eventId: number;
+    message: string;
+  } | null;
+  ignoredResponse: { eventId: number; message: string } | null;
 };
-
-type AgentResponsePointer = {
-  index: number;
-  eventId: AgentEventId;
-  message: string;
-};
-
-type AgentStreamState = {
-  pending: AgentStream[];
-  active: AgentStream | IgnoredAgentStream | null;
-  unmatchedResponse: AgentResponsePointer | null;
-  ignoredResponse: { eventId: AgentEventId; message: string } | null;
-};
-
-function createAgentStreamState(): AgentStreamState {
-  return {
-    pending: [],
-    active: null,
-    unmatchedResponse: null,
-    ignoredResponse: null,
-  };
-}
-
-// TODO: drop once the backend stops stripping `*` and `##+` out of
-// `agent_response` but not `agent_chat_response_part`.
-function stripSpokenMarkdown(text: string): string {
-  return text.replace(/\*+/g, "").replace(/#{2,}/g, "");
-}
-
-function isSameAgentText(streamed: string, final: string): boolean {
-  return stripSpokenMarkdown(streamed) === stripSpokenMarkdown(final);
-}
-
-function findPendingStream(
-  transcript: TranscriptEntry[],
-  state: AgentStreamState,
-  eventId: AgentEventId,
-  message: string
-): AgentStream | undefined {
-  const strippedMessage = stripSpokenMarkdown(message);
-  const candidates = state.pending.filter((stream) => {
-    if (stream.eventId !== eventId) return false;
-    const entry = transcript[stream.index];
-    return entry?.type === "message" && entry.role === "agent" && entry.eventId === eventId;
-  });
-  const textAt = (stream: AgentStream) => {
-    const entry = transcript[stream.index];
-    return entry?.type === "message" ? entry.message : "";
-  };
-  const streamed = candidates.filter((stream) => textAt(stream).trim()).reverse();
-  const active = state.active;
-  const activeStreamed =
-    active?.kind === "stream" && candidates.includes(active) && textAt(active) ? active : undefined;
-
-  return (
-    candidates.find((stream) => isSameAgentText(textAt(stream), message)) ??
-    streamed.find((stream) => strippedMessage.startsWith(stripSpokenMarkdown(textAt(stream)))) ??
-    activeStreamed ??
-    candidates.find((stream) => !textAt(stream).trim()) ??
-    candidates[0]
-  );
-}
 
 type ConversationSetup = ReturnType<typeof useConversationSetup>;
-
-export const ConversationContext = createContext<ConversationSetup | null>(null);
 
 interface ConversationProviderProps {
   children: ComponentChildren;
 }
+
+/** File metadata stored alongside a user message in the local transcript. */
+export type TranscriptFileInput = {
+  fileName: string;
+  mimeType: string;
+  previewUrl: string | null;
+};
 
 export type TranscriptEntry =
   | {
@@ -104,10 +81,16 @@ export type TranscriptEntry =
       isText: boolean;
       conversationIndex: number;
       eventId?: number;
+      responseId?: string;
+      fileInput?: TranscriptFileInput | null;
+      attachments?: MessageAttachment[];
+      visibleLength?: number;
+      speechInterrupted?: boolean;
     }
   | {
       type: "agent_tool_request";
       toolName: string;
+      toolType: string;
       toolCallId: string;
       eventId: number;
       conversationIndex: number;
@@ -118,6 +101,14 @@ export type TranscriptEntry =
       eventId: number;
       isError: boolean;
       conversationIndex: number;
+    }
+  | {
+      type: "rich_content";
+      component: string;
+      props: unknown;
+      conversationIndex: number;
+      eventId: number;
+      richContentId: string;
     }
   | {
       type: "disconnection";
@@ -134,21 +125,300 @@ export type TranscriptEntry =
       type: "mode_toggle";
       mode: ConversationMode;
       conversationIndex: number;
+    }
+  | {
+      type: "queue_timeout";
+      conversationIndex: number;
+    }
+  | {
+      type: "resume_prompt";
+      conversationIndex: number;
     };
+
+export const ConversationContext = createContext<ConversationSetup | null>(null);
+
+// TODO: drop once the backend stops stripping `*` and `##+` out of
+// `agent_response` but not `agent_chat_response_part`.
+function stripSpokenMarkdown(text: string): string {
+  return text.replace(/\*+/g, "").replace(/#{2,}/g, "");
+}
+
+function isSameAgentText(streamed: string, final: string): boolean {
+  return stripSpokenMarkdown(streamed) === stripSpokenMarkdown(final);
+}
+
+function finalizeAgentResponse(
+  transcript: TranscriptEntry[],
+  state: AgentResponseState,
+  responseId: string,
+  message: string,
+  eventId: number,
+  isText: boolean,
+  conversationIndex: number,
+  attachments?: MessageAttachment[]
+): TranscriptEntry[] {
+  const tracked = state.get(responseId);
+  if (tracked) {
+    const existingEntry = transcript[tracked.index];
+    if (existingEntry?.type === "message" && existingEntry.role === "agent") {
+      const updatedTranscript = [...transcript];
+      updatedTranscript[tracked.index] = {
+        ...existingEntry,
+        message: isSameAgentText(existingEntry.message, message) ? existingEntry.message : message,
+        eventId,
+        attachments,
+      };
+      tracked.isStreaming = false;
+      return updatedTranscript;
+    }
+  }
+
+  const index = transcript.length;
+  state.set(responseId, { index, isStreaming: false });
+  return [
+    ...transcript,
+    {
+      type: "message",
+      role: "agent",
+      message,
+      isText,
+      conversationIndex,
+      eventId,
+      responseId,
+      attachments,
+    },
+  ];
+}
+
+function startAgentStream(
+  transcript: TranscriptEntry[],
+  state: AgentResponseState,
+  responseId: string,
+  eventId: number,
+  isText: boolean,
+  conversationIndex: number
+): TranscriptEntry[] {
+  if (state.has(responseId)) return transcript;
+
+  const index = transcript.length;
+  state.set(responseId, { index, isStreaming: true });
+  return [
+    ...transcript,
+    {
+      type: "message",
+      role: "agent",
+      message: "",
+      isText,
+      conversationIndex,
+      eventId,
+      responseId,
+    },
+  ];
+}
+
+function appendAgentDelta(
+  transcript: TranscriptEntry[],
+  state: AgentResponseState,
+  responseId: string,
+  text: string
+): TranscriptEntry[] {
+  const tracked = state.get(responseId);
+  if (!tracked?.isStreaming || !text) return transcript;
+
+  const entry = transcript[tracked.index];
+  if (entry?.type !== "message" || entry.role !== "agent") return transcript;
+
+  const updatedTranscript = [...transcript];
+  updatedTranscript[tracked.index] = {
+    ...entry,
+    message: entry.message + text,
+  };
+  return updatedTranscript;
+}
+
+function createLegacyAgentResponseState(): LegacyAgentResponseState {
+  return {
+    pending: [],
+    active: null,
+    unmatchedResponse: null,
+    ignoredResponse: null,
+  };
+}
+
+function findPendingLegacyStream(
+  transcript: TranscriptEntry[],
+  state: LegacyAgentResponseState,
+  eventId: number,
+  message: string
+): LegacyAgentStream | undefined {
+  const strippedMessage = stripSpokenMarkdown(message);
+  const candidates = state.pending.filter((stream) => {
+    const entry = transcript[stream.index];
+    return (
+      stream.eventId === eventId &&
+      entry?.type === "message" &&
+      entry.role === "agent" &&
+      entry.eventId === eventId
+    );
+  });
+  const textAt = (stream: LegacyAgentStream) => {
+    const entry = transcript[stream.index];
+    return entry?.type === "message" ? entry.message : "";
+  };
+  const streamed = candidates.filter((stream) => textAt(stream).trim()).reverse();
+  const active = state.active && "index" in state.active ? state.active : undefined;
+
+  return (
+    candidates.find((stream) => isSameAgentText(textAt(stream), message)) ??
+    streamed.find((stream) => strippedMessage.startsWith(stripSpokenMarkdown(textAt(stream)))) ??
+    (active && candidates.includes(active) && textAt(active) ? active : undefined) ??
+    candidates.find((stream) => !textAt(stream).trim()) ??
+    candidates[0]
+  );
+}
+
+function finalizeLegacyAgentResponse(
+  transcript: TranscriptEntry[],
+  state: LegacyAgentResponseState,
+  message: string,
+  eventId: number,
+  isText: boolean,
+  conversationIndex: number,
+  attachments?: MessageAttachment[]
+): TranscriptEntry[] {
+  const ignored = state.ignoredResponse;
+  if (ignored && ignored.eventId === eventId && ignored.message === message) {
+    state.ignoredResponse = null;
+    return transcript;
+  }
+
+  const stream = findPendingLegacyStream(transcript, state, eventId, message);
+  if (stream) {
+    const existingEntry = transcript[stream.index];
+    const streamedText = existingEntry?.type === "message" ? existingEntry.message : "";
+    const updatedTranscript = [...transcript];
+    updatedTranscript[stream.index] = {
+      type: "message",
+      role: "agent",
+      message: isSameAgentText(streamedText, message) ? streamedText : message,
+      isText,
+      conversationIndex,
+      eventId,
+      attachments,
+    };
+    state.pending = state.pending.filter((candidate) => candidate !== stream);
+    if (state.active === stream) state.active = null;
+    return updatedTranscript;
+  }
+
+  const index = transcript.length;
+  state.unmatchedResponse = { index, eventId, message };
+  return [
+    ...transcript,
+    {
+      type: "message",
+      role: "agent",
+      message,
+      isText,
+      conversationIndex,
+      eventId,
+      attachments,
+    },
+  ];
+}
+
+function startLegacyAgentStream(
+  transcript: TranscriptEntry[],
+  state: LegacyAgentResponseState,
+  eventId: number,
+  isText: boolean,
+  conversationIndex: number
+): TranscriptEntry[] {
+  const unmatched = state.unmatchedResponse;
+  const unmatchedEntry = unmatched == null ? undefined : transcript[unmatched.index];
+  if (
+    unmatched &&
+    unmatched.eventId === eventId &&
+    unmatched.index === transcript.length - 1 &&
+    unmatchedEntry?.type === "message" &&
+    unmatchedEntry.role === "agent" &&
+    unmatchedEntry.message.trim()
+  ) {
+    state.unmatchedResponse = null;
+    state.active = { eventId };
+    state.ignoredResponse = { eventId, message: unmatched.message };
+    return transcript;
+  }
+
+  const stream = { index: transcript.length, eventId };
+  state.ignoredResponse = null;
+  state.pending.push(stream);
+  state.active = stream;
+  return [
+    ...transcript,
+    {
+      type: "message",
+      role: "agent",
+      message: "",
+      isText,
+      conversationIndex,
+      eventId,
+    },
+  ];
+}
+
+function appendLegacyAgentDelta(
+  transcript: TranscriptEntry[],
+  state: LegacyAgentResponseState,
+  eventId: number,
+  text: string
+): TranscriptEntry[] {
+  const active = state.active;
+  if (!active || !("index" in active) || active.eventId !== eventId || !text) {
+    return transcript;
+  }
+
+  const entry = transcript[active.index];
+  if (entry?.type !== "message" || entry.role !== "agent") return transcript;
+
+  const updatedTranscript = [...transcript];
+  updatedTranscript[active.index] = {
+    ...entry,
+    message: entry.message + text,
+  };
+  return updatedTranscript;
+}
+
+function firstMessageRichContentEntries(
+  richContent: FirstMessageRichContent | null
+): TranscriptEntry[] {
+  if (!richContent) {
+    return [];
+  }
+  return [
+    {
+      type: "rich_content",
+      component: richContent.component,
+      props: richContent.props,
+      eventId: 1,
+      richContentId: "first_message",
+      conversationIndex: 0,
+    },
+  ];
+}
 
 export function ConversationProvider({ children }: ConversationProviderProps) {
   const value = useConversationSetup();
 
-  // Automatically disconnect the conversation after 10 minutes of no messages
+  // End a text chat the visitor has walked away from. Any message or keystroke
+  // restarts the wait; a persistent session stays resumable.
   useSignalEffect(() => {
     if (value.conversationTextOnly.value === true) {
       value.transcript.value;
-      const id = setTimeout(
-        () => {
-          value.endSession();
-        },
-        10 * 60 * 1000 // 10 minutes
-      );
+      value.lastUserActivity.value;
+      const id = setTimeout(() => {
+        value.disconnectSession();
+      }, TEXT_CHAT_IDLE_TIMEOUT_MS);
       return () => {
         clearTimeout(id);
       };
@@ -162,18 +432,34 @@ export function useConversation() {
   return useContextSafely(ConversationContext);
 }
 
+export function useCallButtonDisabled() {
+  const { status } = useConversation();
+  return useComputed(() => status.value === "disconnecting" || status.value === "connecting");
+}
+
 function useConversationSetup() {
   const conversationRef = useRef<Conversation | null>(null);
   const lockRef = useRef<Promise<Conversation> | null>(null);
-  const agentStreamStateRef = useRef(createAgentStreamState());
+  const receivedFirstMessageRef = useRef(false);
+  const agentResponseStateRef = useRef<AgentResponseState>(new Map());
+  const legacyAgentResponseStateRef = useRef(createLegacyAgentResponseState());
+  const typingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const shadowHost = useShadowHost();
 
   const widgetConfig = useWidgetConfig();
   const firstMessage = useFirstMessage();
+  const firstMessageRichContent = useFirstMessageRichContent();
   const terms = useTerms();
   const config = useSessionConfig();
   const { prepare, cancel, guard } = useSessionPreparation();
-  const startRef = useRef<Promise<string | undefined> | null>(null);
+
+  // Helper function to clear typing timer
+  const clearTypingTimer = () => {
+    if (typingTimerRef.current) {
+      clearTimeout(typingTimerRef.current);
+      typingTimerRef.current = null;
+    }
+  };
 
   // Stop the conversation when the component unmounts.
   // This can happen when the widget is used inside another framework.
@@ -181,10 +467,11 @@ function useConversationSetup() {
     return () => {
       cancel();
       conversationRef.current?.endSession();
+      clearTypingTimer();
     };
   }, []);
 
-  return useMemo(() => {
+  const conversation = useMemo(() => {
     const status = signal<Status>("disconnected");
     const isDisconnected = computed(() => status.value === "disconnected");
 
@@ -194,11 +481,76 @@ function useConversationSetup() {
     const error = signal<string | null>(null);
     const lastId = signal<string | null>(null);
     const canSendFeedback = signal(false);
-    const transcript = signal<TranscriptEntry[]>([]);
+
+    const firstMessageEntries = (): TranscriptEntry[] =>
+      firstMessageRichContentEntries(firstMessageRichContent.peek());
+
+    const transcript = signal<TranscriptEntry[]>(firstMessageEntries());
+    const speechReveal = new SpeechReveal(transcript);
+    const agentThinking = new AgentThinking();
     const conversationIndex = signal(0);
     const conversationTextOnly = signal<boolean | null>(null);
+    const lastUserActivity = signal(0);
+    const isAgentTyping = signal(false);
+    const isExternalAgentMode = signal(false);
+    // Whether the AI agent owes a reply to the user's last message
+    const isAwaitingReply = signal(false);
+    // Voice calls only, and not while a human agent has taken over
+    const onUserTurnEnded = () => {
+      if (conversationTextOnly.peek() === false && !isExternalAgentMode.peek())
+        agentThinking.onUserTurnEnded();
+    };
+    const queueStatus = signal<string | null>(null);
+    // Unknown statuses mean "not held" so a new backend status cannot lock the UI.
+    const isHeldInQueue = computed(
+      () => queueStatus.value === "waiting" || queueStatus.value === "timed_out"
+    );
+    // "timed_out" still counts as held: the server sends it just before
+    // closing, so the UI keeps showing waiting until the disconnect lands.
+    const isWaitingForAgent = computed(() => isHeldInQueue.value && !isDisconnected.value);
 
-    return {
+    const setAgentTyping = (typing: boolean, durationMs?: number | null) => {
+      clearTypingTimer();
+      isAgentTyping.value = typing;
+
+      if (typing && durationMs) {
+        typingTimerRef.current = setTimeout(() => {
+          isAgentTyping.value = false;
+        }, durationMs);
+      }
+    };
+
+    const resetAgentResponseState = () => {
+      agentResponseStateRef.current = new Map();
+      legacyAgentResponseStateRef.current = createLegacyAgentResponseState();
+    };
+
+    // Stays set after a disconnect so the replayed transcript keeps hiding
+    // the locally rendered greeting until the next fresh start.
+    const isResumedSession = signal(false);
+    const isResuming = signal(false);
+    const storedSession = createStoredSession(config);
+    // Set once the workspace refuses persistent sessions, so later starts in
+    // this widget instance skip the refused handshake.
+    let persistenceUnavailable = false;
+
+    const navigationResumeStore = createNavigationResumeStore(config);
+    const pendingNavigationResume = navigationResumeStore.pending;
+    const navigationResumeMicMuted = signal(false);
+    const resumePromptEntry = (): TranscriptEntry => ({
+      type: "resume_prompt",
+      conversationIndex: conversationIndex.peek(),
+    });
+    let greetingOverrideRefused = false;
+    const initialResume = pendingNavigationResume.peek();
+    if (initialResume?.turns.length) {
+      transcript.value = [
+        ...toTranscriptEntries(initialResume, conversationIndex.peek()),
+        resumePromptEntry(),
+      ];
+    }
+
+    const value = {
       status,
       isSpeaking,
       mode,
@@ -209,43 +561,146 @@ function useConversationSetup() {
       conversationIndex,
       conversationTextOnly,
       transcript,
-      startSession: (element: HTMLElement, initialMessage?: string) => {
-        if (startRef.current) return startRef.current;
+      lastUserActivity,
+      isAgentTyping,
+      isAwaitingReply,
+      isAgentThinking: agentThinking.isThinking,
+      isExternalAgentMode,
+      queueStatus,
+      isWaitingForAgent,
+      isResumedSession,
+      isResuming,
+      hasStoredSession: storedSession.hasStoredSession,
+      pendingNavigationResume,
+      navigationResumeMicMuted,
+      startSession: async (
+        element: HTMLElement | null,
+        initialMessage?: string,
+        initialMessageOptions?: SendUserMessageOptions,
+        resumeToken?: string,
+        continuedCall?: NavigationResumeRecord | null
+      ): Promise<string | undefined> => {
+        // A message typed after a disconnect continues the stored text
+        // conversation instead of opening a second one. Starting a voice
+        // call is a new conversation, so it never resumes.
+        const resume = resumeToken ?? (initialMessage ? storedSession.read() : null);
+        // Typing also answers the offer; any other call start spends it.
+        const navigationResume =
+          continuedCall ?? (initialMessage ? pendingNavigationResume.peek() : null);
+        if (!navigationResume) {
+          pendingNavigationResume.value = null;
+        }
+        const retry = () =>
+          value.startSession(
+            element,
+            initialMessage,
+            initialMessageOptions,
+            undefined,
+            continuedCall
+          );
+        const greetingRefused = (cause: unknown) => {
+          if (!navigationResume || greetingOverrideRefused) return false;
+          greetingOverrideRefused = isFirstMessageOverrideRefused(cause);
+          return greetingOverrideRefused;
+        };
+        // Invalidated when the agent, environment or signed URL changes, or the
+        // widget ends or unmounts, while this start is still preparing.
         const isCurrent = guard();
-        const start = async () => {
+        // A refusal before this start returns retries once the start settles.
+        let started = false;
+        let refusedBeforeStart = false;
+        if (resume || navigationResume) {
+          // The stored conversation was started behind the terms gate, so a
+          // resume does not ask again.
+          terms.acceptTerms();
+        } else {
           await terms.requestTerms();
-          if (!isCurrent()) return undefined;
+        }
 
-          if (conversationRef.current?.isOpen()) {
-            return conversationRef.current.getId();
+        if (conversationRef.current?.isOpen()) {
+          return conversationRef.current.getId();
+        }
+
+        if (lockRef.current) {
+          // A message typed while a connect is in flight rides on that
+          // connection instead of being dropped.
+          if (initialMessage) {
+            value.sendUserMessage(initialMessage, initialMessageOptions);
           }
+          const conversation = await lockRef.current;
+          return conversation.getId();
+        }
 
-          if (lockRef.current) {
-            const conversation = await lockRef.current;
-            return conversation.getId();
+        let processedConfig = structuredClone(config.peek());
+        if (!processedConfig.userId) {
+          processedConfig.userId = await getOrCreateUserId();
+        }
+
+        // If the user started the conversation with a text message, and the
+        // agent supports it, switch to text-only mode. Persistent sessions are
+        // text only, so a resume does the same; a continued call stays voice.
+        if ((initialMessage && !continuedCall && widgetConfig.value.supports_text_only) || resume) {
+          processedConfig.textOnly = true;
+          if (!widgetConfig.value.text_only) {
+            processedConfig.overrides ??= {};
+            processedConfig.overrides.conversation ??= {};
+            processedConfig.overrides.conversation.textOnly = true;
           }
+        }
+        // Skips the greeting; the agent must allow first message overrides.
+        if (navigationResume && firstMessage.peek() && !greetingOverrideRefused) {
+          processedConfig.overrides ??= {};
+          processedConfig.overrides.agent ??= {};
+          processedConfig.overrides.agent.firstMessage = "";
+        }
+        configurePersistentSession(processedConfig, {
+          resume,
+          unavailable: persistenceUnavailable,
+        });
+        if (!processedConfig.persistentSession && storedSession.hasStoredSession.peek()) {
+          // A voice call cannot continue the paused text conversation, so
+          // starting one abandons it.
+          storedSession.clear();
+        }
 
-          let processedConfig = structuredClone(config.peek());
-          // If the user started the conversation with a text message, and the
-          // agent supports it, switch to text-only mode.
-          if (initialMessage && widgetConfig.value.supports_text_only) {
-            processedConfig.textOnly = true;
-            if (!widgetConfig.value.text_only) {
-              processedConfig.overrides ??= {};
-              processedConfig.overrides.conversation ??= {};
-              processedConfig.overrides.conversation.textOnly = true;
-            }
-          }
+        try {
+          processedConfig = triggerCallEvent(shadowHost.value ?? element, processedConfig);
+        } catch (error) {
+          console.error("[ConversationalAI] Error triggering call event:", error);
+        }
 
-          try {
-            processedConfig = triggerCallEvent(shadowHost.value ?? element, processedConfig);
-          } catch (error) {
-            console.error("[ConversationalAI] Error triggering call event:", error);
-          }
+        // The transcript still holds this conversation when the socket dropped
+        // mid-chat; only a reload starts from the replayed history.
+        const keepTranscript =
+          !!resume &&
+          transcript
+            .peek()
+            .some(
+              (entry) =>
+                entry.type === "message" && entry.conversationIndex === conversationIndex.peek()
+            );
 
-          agentStreamStateRef.current = createAgentStreamState();
-          conversationTextOnly.value = processedConfig.textOnly ?? false;
-          transcript.value = initialMessage
+        conversationTextOnly.value = processedConfig.textOnly ?? false;
+        queueStatus.value = null;
+        resetAgentResponseState();
+        isResuming.value = !!resume;
+        // A kept transcript renders its greeting as before; a replayed one
+        // holds the greeting as a stored row.
+        if (!keepTranscript) {
+          isResumedSession.value = !!resume || !!navigationResume;
+        }
+        // No greeting is sent on resume.
+        receivedFirstMessageRef.current = !!resume || !!navigationResume;
+        speechReveal.reset();
+        transcript.value = [
+          ...(keepTranscript
+            ? transcript.peek()
+            : navigationResume
+              ? toTranscriptEntries(navigationResume, conversationIndex.peek())
+              : resume
+                ? []
+                : firstMessageEntries()),
+          ...(initialMessage
             ? [
                 {
                   type: "message",
@@ -253,19 +708,31 @@ function useConversationSetup() {
                   message: initialMessage,
                   isText: true,
                   conversationIndex: conversationIndex.peek(),
-                },
+                } satisfies TranscriptEntry,
               ]
-            : [];
+            : []),
+        ];
+        isAwaitingReply.value = !!initialMessage;
+        // WebRTC reports no playback, so its messages are shown in full
+        const transcriptSpeechSync =
+          !!widgetConfig.value.transcript_speech_sync_enabled &&
+          processedConfig.connectionType !== "webrtc";
 
-          try {
-            status.value = "connecting";
-            processedConfig = await prepare(processedConfig);
+        let lock: Promise<Conversation> | null = null;
+        try {
+          // Managed embeds sign a fresh session for the widget's own agent branch
+          // here, after the call event, so a host callback cannot swap it out.
+          status.value = "connecting";
+          lockRef.current = lock = prepare(processedConfig).then((prepared) => {
             if (!isCurrent()) throw new Error("Conversation cancelled.");
-            conversationTextOnly.value = processedConfig.textOnly ?? false;
-            lockRef.current = Conversation.startSession({
-              ...processedConfig,
+            processedConfig = prepared;
+            conversationTextOnly.value = prepared.textOnly ?? false;
+            return Conversation.startSession({
+              ...prepared,
               onModeChange: (props) => {
                 mode.value = props.mode;
+                speechReveal.onModeChange(props.mode);
+                agentThinking.onModeChange(props.mode);
               },
               onStatusChange: (props) => {
                 status.value = props.status;
@@ -273,63 +740,94 @@ function useConversationSetup() {
               onCanSendFeedbackChange: (props) => {
                 canSendFeedback.value = props.canSendFeedback;
               },
-              onMessage: ({ role, message, event_id }) => {
+              onConversationMetadata: ({ persistent_session_token }) => {
+                if (persistent_session_token) {
+                  storedSession.store(persistent_session_token);
+                }
+              },
+              onConversationHistory: ({ rows }) => {
+                if (keepTranscript) return;
+                // Replayed rows predate everything this segment has added, such
+                // as the message that triggered the resume.
+                transcript.value = [
+                  ...rows.map(
+                    ({ role, text, rich_content }): TranscriptEntry =>
+                      rich_content
+                        ? {
+                            type: "rich_content",
+                            component: rich_content.component,
+                            props: rich_content.props,
+                            richContentId: rich_content.rich_content_id,
+                            // No turn speaks under 0, so the card is never held back.
+                            eventId: 0,
+                            conversationIndex: conversationIndex.peek(),
+                          }
+                        : {
+                            type: "message",
+                            role,
+                            message: text,
+                            isText: true,
+                            conversationIndex: conversationIndex.peek(),
+                          }
+                  ),
+                  ...transcript.peek(),
+                ];
+              },
+              onMessage: ({ role, message, event_id, response_id, attachments }) => {
+                // Event ids restart on resume and no greeting is sent, so the
+                // first reply of a resumed segment carries this id.
                 if (
+                  !resume &&
+                  !navigationResume &&
                   firstMessage.peek() &&
                   conversationTextOnly.peek() === true &&
                   role === "agent" &&
                   event_id === FIRST_MESSAGE_EVENT_ID
                 ) {
+                  receivedFirstMessageRef.current = true;
                   // The configured first message is already rendered locally in
                   // text mode, so ignore the server copy.
                   return;
+                } else if (role === "agent") {
+                  receivedFirstMessageRef.current = true;
+                  setAgentTyping(false);
                 }
 
                 if (role === "agent") {
                   const currentTranscript = transcript.peek();
-                  const streamState = agentStreamStateRef.current;
-
-                  const ignoredResponse = streamState.ignoredResponse;
-                  if (
-                    ignoredResponse &&
-                    ignoredResponse.eventId === event_id &&
-                    ignoredResponse.message === message
-                  ) {
-                    streamState.ignoredResponse = null;
-                    return;
-                  }
-
-                  const streamingMessage = findPendingStream(
-                    currentTranscript,
-                    streamState,
-                    event_id,
-                    message
-                  );
-
-                  if (streamingMessage) {
-                    const streamedEntry = currentTranscript[streamingMessage.index];
-                    const streamedText =
-                      streamedEntry?.type === "message" ? streamedEntry.message : "";
-                    const updatedTranscript = [...currentTranscript];
-                    updatedTranscript[streamingMessage.index] = {
-                      type: "message",
-                      role: "agent",
-                      // Only the streamed copy still carries the formatting.
-                      message: isSameAgentText(streamedText, message) ? streamedText : message,
-                      isText: conversationTextOnly.peek() === true,
-                      conversationIndex: conversationIndex.peek(),
-                      eventId: event_id,
-                    };
-                    transcript.value = updatedTranscript;
-                    streamState.pending = streamState.pending.filter(
-                      (stream) => stream !== streamingMessage
+                  const isText = conversationTextOnly.peek() === true;
+                  const currentConversationIndex = conversationIndex.peek();
+                  if (response_id == null) {
+                    transcript.value = finalizeLegacyAgentResponse(
+                      currentTranscript,
+                      legacyAgentResponseStateRef.current,
+                      message,
+                      event_id,
+                      isText,
+                      currentConversationIndex,
+                      attachments
                     );
-                    if (streamState.active === streamingMessage) {
-                      streamState.active = null;
-                    }
-                    return;
+                  } else {
+                    transcript.value = finalizeAgentResponse(
+                      currentTranscript,
+                      agentResponseStateRef.current,
+                      response_id,
+                      message,
+                      event_id,
+                      isText,
+                      currentConversationIndex,
+                      attachments
+                    );
                   }
+                  if (!isText) {
+                    speechReveal.onAgentMessage(event_id);
+                  }
+                  return;
                 }
+
+                // The agent is done talking once the user has replied
+                speechReveal.finishAll();
+                onUserTurnEnded();
 
                 const currentTranscript = transcript.peek();
                 transcript.value = [
@@ -341,104 +839,110 @@ function useConversationSetup() {
                     isText: conversationTextOnly.peek() === true,
                     conversationIndex: conversationIndex.peek(),
                     eventId: event_id,
+                    attachments,
                   },
                 ];
-                if (role === "agent") {
-                  agentStreamStateRef.current.unmatchedResponse = {
-                    index: currentTranscript.length,
-                    eventId: event_id,
-                    message,
-                  };
-                }
               },
-              onAgentChatResponsePart: ({ text, type, event_id }) => {
+              onAgentChatResponsePart: ({ text, type, event_id, response_id }) => {
                 // Voice conversations render `agent_response` transcripts only.
                 if (conversationTextOnly.peek() !== true) return;
 
-                // Only event 1 is the configured greeting. Never discard the first
-                // actual reply when the server omits that greeting after interruption.
-                if (firstMessage.peek() && event_id === FIRST_MESSAGE_EVENT_ID) return;
+                if (
+                  !resume &&
+                  !navigationResume &&
+                  firstMessage.peek() &&
+                  event_id === FIRST_MESSAGE_EVENT_ID
+                ) {
+                  // Only the configured greeting's own event is skipped; it is
+                  // rendered locally. When the server omits the greeting, the
+                  // first real reply streams through intact.
+                  receivedFirstMessageRef.current = true;
+                  return;
+                }
+                setAgentTyping(false);
 
-                if (type === "start") {
-                  const currentTranscript = transcript.peek();
-                  const streamState = agentStreamStateRef.current;
-                  const unmatchedResponse = streamState.unmatchedResponse;
-                  const unmatchedEntry =
-                    unmatchedResponse == null
-                      ? undefined
-                      : currentTranscript[unmatchedResponse.index];
-                  if (
-                    unmatchedResponse &&
-                    unmatchedResponse.eventId === event_id &&
-                    unmatchedResponse.index === currentTranscript.length - 1 &&
-                    unmatchedEntry?.type === "message" &&
-                    unmatchedEntry.role === "agent" &&
-                    unmatchedEntry.message.trim() !== ""
-                  ) {
-                    streamState.unmatchedResponse = null;
-                    streamState.active = { kind: "ignored", eventId: event_id };
-                    streamState.ignoredResponse = {
-                      eventId: event_id,
-                      message: unmatchedResponse.message,
-                    };
-                    return;
-                  }
-
-                  const stream: AgentStream = {
-                    kind: "stream",
-                    index: currentTranscript.length,
-                    eventId: event_id,
-                  };
-                  streamState.ignoredResponse = null;
-                  streamState.pending.push(stream);
-                  streamState.active = stream;
-                  transcript.value = [
-                    ...currentTranscript,
-                    {
-                      type: "message",
-                      role: "agent",
-                      message: "",
-                      isText: conversationTextOnly.peek() === true,
-                      conversationIndex: conversationIndex.peek(),
-                      eventId: event_id,
-                    },
-                  ];
-                } else if (type === "delta") {
-                  const activeStream = agentStreamStateRef.current.active;
-                  if (
-                    activeStream &&
-                    activeStream.kind === "stream" &&
-                    activeStream.eventId === event_id &&
-                    text
-                  ) {
-                    const currentTranscript = transcript.peek();
-                    const entry = currentTranscript[activeStream.index];
-                    if (
-                      entry?.type === "message" &&
-                      entry.role === "agent" &&
-                      entry.eventId === event_id
-                    ) {
-                      const updatedTranscript = [...currentTranscript];
-                      updatedTranscript[activeStream.index] = {
-                        ...entry,
-                        message: entry.message + text,
-                      };
+                const currentTranscript = transcript.peek();
+                const isText = conversationTextOnly.peek() === true;
+                const currentConversationIndex = conversationIndex.peek();
+                if (response_id == null) {
+                  const legacyState = legacyAgentResponseStateRef.current;
+                  if (type === "start") {
+                    const updatedTranscript = startLegacyAgentStream(
+                      currentTranscript,
+                      legacyState,
+                      event_id,
+                      isText,
+                      currentConversationIndex
+                    );
+                    if (updatedTranscript !== currentTranscript) {
                       transcript.value = updatedTranscript;
                     }
+                  } else if (type === "delta") {
+                    const updatedTranscript = appendLegacyAgentDelta(
+                      currentTranscript,
+                      legacyState,
+                      event_id,
+                      text
+                    );
+                    if (updatedTranscript !== currentTranscript) {
+                      transcript.value = updatedTranscript;
+                    }
+                  } else if (type === "stop" && legacyState.active?.eventId === event_id) {
+                    legacyState.active = null;
+                  }
+                  return;
+                }
+
+                const responseState = agentResponseStateRef.current;
+                if (type === "start") {
+                  const updatedTranscript = startAgentStream(
+                    currentTranscript,
+                    responseState,
+                    response_id,
+                    event_id,
+                    isText,
+                    currentConversationIndex
+                  );
+                  if (updatedTranscript !== currentTranscript) {
+                    transcript.value = updatedTranscript;
+                  }
+                } else if (type === "delta") {
+                  const updatedTranscript = appendAgentDelta(
+                    currentTranscript,
+                    responseState,
+                    response_id,
+                    text
+                  );
+                  if (updatedTranscript !== currentTranscript) {
+                    transcript.value = updatedTranscript;
                   }
                 } else if (type === "stop") {
-                  const streamState = agentStreamStateRef.current;
-                  if (streamState.active?.eventId === event_id) {
-                    streamState.active = null;
-                  }
+                  const tracked = responseState.get(response_id);
+                  if (tracked) tracked.isStreaming = false;
                 }
               },
-              onAgentToolRequest: ({ tool_call_id, tool_name, event_id }) => {
+              onAudioAlignment: () => {
+                if (transcriptSpeechSync) {
+                  speechReveal.onAlignmentReceived();
+                }
+              },
+              onAudioAlignmentPlayback: ({ event_id, alignment }) => {
+                if (transcriptSpeechSync) {
+                  speechReveal.onAlignmentPlayback(event_id, alignment);
+                }
+              },
+              onInterruption: ({ event_id }) => {
+                speechReveal.onInterruption(event_id);
+                agentThinking.onInterruption();
+              },
+              onAgentToolRequest: ({ tool_call_id, tool_name, tool_type, event_id }) => {
+                agentThinking.onToolRequest();
                 transcript.value = [
                   ...transcript.peek(),
                   {
                     type: "agent_tool_request",
                     toolName: tool_name,
+                    toolType: tool_type,
                     toolCallId: tool_call_id,
                     eventId: event_id,
                     conversationIndex: conversationIndex.peek(),
@@ -446,6 +950,7 @@ function useConversationSetup() {
                 ];
               },
               onAgentToolResponse: ({ tool_call_id, is_error, event_id }) => {
+                agentThinking.onToolResponse();
                 transcript.value = [
                   ...transcript.peek(),
                   {
@@ -457,25 +962,107 @@ function useConversationSetup() {
                   },
                 ];
               },
-              onDisconnect: (details) => {
-                conversationTextOnly.value = null;
-                agentStreamStateRef.current = createAgentStreamState();
+              onRichContent: ({ component, props, event_id, rich_content_id }) => {
                 transcript.value = [
                   ...transcript.peek(),
-                  details.reason === "error"
+                  {
+                    type: "rich_content",
+                    component,
+                    props,
+                    eventId: event_id,
+                    richContentId: rich_content_id,
+                    conversationIndex: conversationIndex.peek(),
+                  },
+                ];
+              },
+              onAgentTyping: ({ is_typing, duration_ms }) => {
+                setAgentTyping(is_typing, duration_ms);
+              },
+              onExternalAgentConnected: () => {
+                isExternalAgentMode.value = true;
+                isAwaitingReply.value = false;
+                agentThinking.reset();
+              },
+              onExternalAgentDisconnected: () => {
+                setAgentTyping(false);
+                isExternalAgentMode.value = false;
+              },
+              // The SDK forwards unhandled server events to onDebug.
+              // TODO: drop this narrowing once the SDK handles queue_status
+              // explicitly (planned after the queue protocol is finalized).
+              onDebug: (props: unknown) => {
+                const event = props as {
+                  type?: string;
+                  queue_status_event?: { status?: unknown };
+                };
+                if (
+                  event?.type === "queue_status" &&
+                  typeof event.queue_status_event?.status === "string"
+                ) {
+                  queueStatus.value = event.queue_status_event.status;
+                }
+              },
+              onDisconnect: (details) => {
+                // A queue timeout closes with an error; show friendly copy
+                // instead of the raw close reason.
+                const queueTimedOut =
+                  details.reason === "error" && queueStatus.peek() === "timed_out";
+                if (isFinalDisconnect(details)) {
+                  storedSession.clear();
+                }
+                receivedFirstMessageRef.current = false;
+                conversationTextOnly.value = null;
+                resetAgentResponseState();
+                speechReveal.finishAll();
+                speechReveal.reset();
+                agentThinking.reset();
+                clearTypingTimer();
+                isAgentTyping.value = false;
+                isExternalAgentMode.value = false;
+                isAwaitingReply.value = false;
+                // xi refuses the override after sending metadata on web calls.
+                if (greetingRefused(details)) {
+                  if (!started) {
+                    refusedBeforeStart = true;
+                    return;
+                  }
+                  pendingNavigationResume.value = navigationResume;
+                  setTimeout(() => void retry());
+                  return;
+                }
+                // A close with the token still stored is a pause, not an end:
+                // the transcript stays and the next message or the page coming
+                // back to the foreground continues the conversation.
+                if (storedSession.hasStoredSession.peek()) {
+                  if (details.reason === "error") {
+                    console.warn(
+                      "[ConversationalAI] Connection lost, the conversation can be resumed:",
+                      details.message
+                    );
+                  }
+                  return;
+                }
+                transcript.value = [
+                  ...transcript.peek(),
+                  queueTimedOut
                     ? {
-                        type: "error",
-                        message: details.message,
+                        type: "queue_timeout",
                         conversationIndex: conversationIndex.peek(),
                       }
-                    : {
-                        type: "disconnection",
-                        role: details.reason === "user" ? "user" : "agent",
-                        conversationIndex: conversationIndex.peek(),
-                      },
+                    : details.reason === "error"
+                      ? {
+                          type: "error",
+                          message: details.message,
+                          conversationIndex: conversationIndex.peek(),
+                        }
+                      : {
+                          type: "disconnection",
+                          role: details.reason === "user" ? "user" : "agent",
+                          conversationIndex: conversationIndex.peek(),
+                        },
                 ];
                 conversationIndex.value++;
-                if (details.reason === "error") {
+                if (details.reason === "error" && !queueTimedOut) {
                   error.value = details.message;
                   console.error(
                     "[ConversationalAI] Disconnected due to an error:",
@@ -484,26 +1071,93 @@ function useConversationSetup() {
                 }
               },
             });
+          });
 
-            const connected = await lockRef.current;
-            if (!isCurrent()) {
-              await connected.endSession();
-              throw new Error("Conversation cancelled.");
-            }
-            conversationRef.current = connected;
-            if (initialMessage) {
-              const instance = conversationRef.current;
-              // TODO: Remove the delay once BE can handle it
-              setTimeout(() => instance.sendUserMessage(initialMessage), 100);
-            }
+          const connected = await lockRef.current;
+          if (!isCurrent()) {
+            await connected.endSession();
+            throw new Error("Conversation cancelled.");
+          }
+          conversationRef.current = connected;
+          started = true;
+          if (refusedBeforeStart) {
+            lockRef.current = null;
+            return retry();
+          }
+          if (navigationResume) {
+            pendingNavigationResume.value = null;
+            navigationResumeMicMuted.value = navigationResume.micMuted && !processedConfig.textOnly;
+          }
+          if (navigationResume || initialMessage) {
+            const instance = conversationRef.current;
+            // TODO: Remove the delay once BE can handle it
+            setTimeout(() => {
+              if (!instance.isOpen()) return;
+              if (navigationResume) {
+                instance.sendContextualUpdate(buildResumeContext(navigationResume.turns));
+              }
+              if (initialMessage) {
+                instance.sendUserMessage(initialMessage, initialMessageOptions);
+              }
+            }, 100);
+          }
 
-            const id = conversationRef.current.getId();
-            lastId.value = id;
-            error.value = null;
-            return id;
-          } catch (e) {
-            // Agent changes, explicit end and unmount intentionally invalidate this start.
-            if (!isCurrent()) return undefined;
+          const id = conversationRef.current.getId();
+          lastId.value = id;
+          error.value = null;
+          return id;
+        } catch (e) {
+          // Agent changes, an explicit end and unmount invalidate this start on purpose.
+          if (!isCurrent()) return undefined;
+          if (refusedBeforeStart || greetingRefused(e)) {
+            lockRef.current = null;
+            return retry();
+          }
+          if (processedConfig.persistentSession && isPersistentSessionRefused(e)) {
+            if (resume) {
+              storedSession.clear();
+            } else {
+              persistenceUnavailable = true;
+            }
+            if (initialMessage || !resume) {
+              // Clear the rejected promise first, otherwise the retry awaits it
+              // at the top of startSession and rethrows.
+              lockRef.current = null;
+              return retry();
+            }
+          }
+          if (resume && !initialMessage) {
+            // An automatic resume that fails must not greet the user with an
+            // error.
+            console.warn("[ConversationalAI] Could not resume the stored conversation:", e);
+            isResumedSession.value = false;
+            conversationTextOnly.value = null;
+            if (keepTranscript) {
+              transcript.value = [
+                ...transcript.peek(),
+                {
+                  type: "disconnection",
+                  role: "agent",
+                  conversationIndex: conversationIndex.peek(),
+                },
+              ];
+              conversationIndex.value++;
+            } else {
+              transcript.value = firstMessageEntries();
+            }
+            return;
+          }
+          // A queue timeout can close the connection before startSession
+          // resolves.
+          if (queueStatus.peek() === "timed_out") {
+            transcript.value = [
+              ...transcript.value,
+              {
+                type: "queue_timeout",
+                conversationIndex: conversationIndex.peek(),
+              },
+            ];
+          } else {
             let message = "Could not start a conversation.";
             if (e instanceof CloseEvent) {
               message = e.reason || message;
@@ -519,17 +1173,77 @@ function useConversationSetup() {
                 conversationIndex: conversationIndex.peek(),
               },
             ];
-          } finally {
-            lockRef.current = null;
-            if (!conversationRef.current?.isOpen()) status.value = "disconnected";
           }
-        };
-        startRef.current = start().finally(() => {
-          startRef.current = null;
-        });
-        return startRef.current;
+          if (navigationResume) {
+            transcript.value = [...transcript.peek(), resumePromptEntry()];
+          }
+        } finally {
+          // A retry may already own the lock.
+          if (!lockRef.current || lockRef.current === lock) {
+            lockRef.current = null;
+            isResuming.value = false;
+          }
+          if (!conversationRef.current?.isOpen() && !lockRef.current) {
+            status.value = "disconnected";
+          }
+        }
       },
+      resumeSession: async () => {
+        const token = storedSession.read();
+        if (token) {
+          await value.startSession(null, undefined, undefined, token);
+        }
+      },
+      continueNavigationCall: async (
+        element: HTMLElement | null,
+        message?: string,
+        options?: SendUserMessageOptions
+      ) => {
+        return value.startSession(
+          element,
+          message,
+          options,
+          undefined,
+          pendingNavigationResume.peek()
+        );
+      },
+      storeNavigationResume: ({ micMuted }: { micMuted: boolean }) => {
+        if (!config.peek().persistentSession) return;
+        const conversation = conversationRef.current;
+        if (!conversation?.isOpen()) {
+          navigationResumeStore.carryOver();
+          return;
+        }
+        if (conversationTextOnly.peek() === true) return;
+        navigationResumeStore.save(transcript.peek(), {
+          micMuted,
+          conversationId: conversation.getId(),
+        });
+      },
+      /** Ends the conversation for good; a persistent session is forgotten. */
       endSession: async () => {
+        storedSession.clear();
+        navigationResumeStore.clear();
+        // Declining an interrupted call shows its end screen; nothing is live.
+        const pending = pendingNavigationResume.peek();
+        if (pending && !lockRef.current) {
+          pendingNavigationResume.value = null;
+          lastId.value = pending.conversationId ?? null;
+          transcript.value = [
+            ...transcript.peek().filter((entry) => entry.type !== "resume_prompt"),
+            {
+              type: "disconnection",
+              role: "user",
+              conversationIndex: conversationIndex.peek(),
+            },
+          ];
+          conversationIndex.value++;
+          return;
+        }
+        await value.disconnectSession();
+      },
+      /** Closes the connection but keeps a persistent session resumable. */
+      disconnectSession: async () => {
         cancel();
         const conversation = conversationRef.current;
         conversationRef.current = null;
@@ -550,8 +1264,26 @@ function useConversationSetup() {
       sendFeedback: (like: boolean) => {
         conversationRef.current?.sendFeedback(like);
       },
-      sendUserMessage: (text: string) => {
-        conversationRef.current?.sendUserMessage(text);
+      sendUserMessage: (text: string, options?: SendUserMessageOptions) => {
+        // The orchestrator discards messages sent while held in the queue.
+        if (isWaitingForAgent.peek()) return;
+        const pendingConnect = lockRef.current;
+        if (conversationRef.current?.isOpen()) {
+          conversationRef.current.sendUserMessage(text, options);
+        } else if (pendingConnect) {
+          // Typed while a resume is still connecting. A failed connect
+          // reports itself through startSession, so nothing to add here.
+          void pendingConnect
+            .then((conversation) => {
+              // TODO: Remove the delay once BE can handle it
+              setTimeout(() => conversation.sendUserMessage(text, options), 100);
+            })
+            .catch(() => {
+              // startSession has already handled the failed resume by now, so
+              // the message starts over like one typed after a disconnect.
+              void value.startSession(null, text, options);
+            });
+        }
         transcript.value = [
           ...transcript.value,
           {
@@ -562,9 +1294,40 @@ function useConversationSetup() {
             conversationIndex: conversationIndex.peek(),
           },
         ];
+        isAwaitingReply.value = !isExternalAgentMode.peek();
+        onUserTurnEnded();
+      },
+      sendMultimodalMessage: (input: {
+        text?: string;
+        file: TranscriptFileInput & { fileId: string };
+      }) => {
+        if (isWaitingForAgent.peek()) return;
+        const trimmed = input.text?.trim() ?? "";
+        const { fileId, ...fileInput } = input.file;
+        conversationRef.current?.sendMultimodalMessage({
+          text: trimmed || undefined,
+          fileId,
+        });
+        transcript.value = [
+          ...transcript.value,
+          {
+            type: "message",
+            role: "user",
+            message: trimmed,
+            isText: true,
+            conversationIndex: conversationIndex.peek(),
+            fileInput,
+          },
+        ];
+        isAwaitingReply.value = !isExternalAgentMode.peek();
+        onUserTurnEnded();
       },
       sendUserActivity: () => {
         conversationRef.current?.sendUserActivity();
+        lastUserActivity.value = Date.now();
+      },
+      sendContextualUpdate: (text: string) => {
+        conversationRef.current?.sendContextualUpdate(text);
       },
       addModeToggleEntry: (mode: ConversationMode) => {
         // Only add entry if conversation is active
@@ -579,17 +1342,50 @@ function useConversationSetup() {
         ];
       },
     };
-  }, [config, prepare, cancel, guard]);
+    return value;
+  }, [config]);
+
+  useSignalEffect(() => {
+    const richContent = firstMessageRichContent.value;
+    if (conversation.status.value !== "disconnected") {
+      return;
+    }
+    const isGreetingOnly = conversation.transcript
+      .peek()
+      .every((entry) => entry.type === "rich_content" && entry.richContentId === "first_message");
+    if (!isGreetingOnly) {
+      return;
+    }
+    conversation.transcript.value = firstMessageRichContentEntries(richContent);
+  });
+
+  return conversation;
 }
 
-function triggerCallEvent(element: HTMLElement, config: SessionConfig): SessionConfig {
+// A random id kept in the visitor's browser. No device fingerprinting: the
+// widget runs on customers' sites without a consent step for it.
+async function getOrCreateUserId(): Promise<string> {
+  const STORAGE_KEY = "elevenlabs_convai_user_id";
+  try {
+    let userId = localStorage.getItem(STORAGE_KEY);
+    if (!userId) {
+      userId = crypto.randomUUID();
+      localStorage.setItem(STORAGE_KEY, userId);
+    }
+    return userId;
+  } catch {
+    return crypto.randomUUID();
+  }
+}
+
+function triggerCallEvent(element: HTMLElement | null, config: SessionConfig): SessionConfig {
   try {
     const event = new CustomEvent("elevenlabs-convai:call", {
       bubbles: true,
       composed: true,
       detail: { config },
     });
-    element.dispatchEvent(event);
+    element?.dispatchEvent(event);
     return event.detail.config;
   } catch (e) {
     console.error("[ConversationalAI] Could not trigger call event:", e);

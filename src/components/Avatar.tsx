@@ -10,6 +10,7 @@ import { clsx } from "clsx";
 const SIZE_CLASSES = {
   sm: "w-9 h-9",
   lg: "w-48 h-48",
+  xl: "w-72 h-72",
 };
 
 interface AvatarProps {
@@ -18,8 +19,7 @@ interface AvatarProps {
 }
 
 export function Avatar({ size = "sm", className }: AvatarProps) {
-  const { getInputVolume, getOutputVolume, isSpeaking, isDisconnected } =
-    useConversation();
+  const { getInputVolume, getOutputVolume, isSpeaking, isDisconnected } = useConversation();
   const { config } = useAvatarConfig();
   const backgroundRef = useRef<HTMLDivElement>(null);
   const imageRef = useRef<HTMLDivElement>(null);
@@ -63,20 +63,14 @@ export function Avatar({ size = "sm", className }: AvatarProps) {
 
   return (
     <div className={clsx("relative shrink-0", SIZE_CLASSES[size], className)}>
-      <div
-        ref={backgroundRef}
-        className="absolute inset-0 rounded-full bg-base-border"
-      />
+      <div ref={backgroundRef} className="absolute inset-0 rounded-full bg-base-border" />
       <div
         ref={imageRef}
         style={style}
         className="absolute inset-0 rounded-full overflow-hidden bg-base bg-cover"
       >
         {config.value.type === "orb" && (
-          <OrbCanvas
-            color1={config.value.color_1}
-            color2={config.value.color_2}
-          />
+          <OrbCanvas color1={config.value.color_1} color2={config.value.color_2} />
         )}
       </div>
     </div>
@@ -95,10 +89,7 @@ function OrbCanvas({ color1, color2 }: { color1: string; color2: string }) {
     }
   }, [orb, color1, color2]);
 
-  useEffect(
-    () => (orb ? followConversationVolume(orb, conversation) : undefined),
-    [orb]
-  );
+  useEffect(() => (orb ? followConversationVolume(orb, conversation) : undefined), [orb]);
 
   const setupOrb = useCallback(
     (canvas: HTMLCanvasElement | null) => {

@@ -6,11 +6,7 @@ type ContentBlockRootProps = HTMLAttributes<HTMLDivElement> & {
   children: ComponentChildren;
 };
 
-function ContentBlockRoot({
-  children,
-  className,
-  ...props
-}: ContentBlockRootProps) {
+function ContentBlockRoot({ children, className, ...props }: ContentBlockRootProps) {
   return (
     <div
       className={cn(
@@ -28,11 +24,7 @@ type ContentBlockActionsProps = HTMLAttributes<HTMLDivElement> & {
   children: ComponentChildren;
 };
 
-function ContentBlockActions({
-  children,
-  className,
-  ...props
-}: ContentBlockActionsProps) {
+function ContentBlockActions({ children, className, ...props }: ContentBlockActionsProps) {
   return (
     <div
       className={cn(
@@ -50,11 +42,7 @@ type ContentBlockContentProps = HTMLAttributes<HTMLDivElement> & {
   children: ComponentChildren;
 };
 
-function ContentBlockContent({
-  children,
-  className,
-  ...props
-}: ContentBlockContentProps) {
+function ContentBlockContent({ children, className, ...props }: ContentBlockContentProps) {
   return (
     <div className={className} {...props}>
       {children}

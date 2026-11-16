@@ -1,7 +1,8 @@
+import type { ComponentChildren } from "preact";
 import { render } from "preact";
 import { jsx } from "preact/jsx-runtime";
 import { useState, useEffect, useMemo } from "preact/compat";
-import { useSignal, useComputed, signal, type Signal } from "@preact/signals";
+import { useSignal, useComputed, useSignalEffect, signal, type Signal } from "@preact/signals";
 
 const LIGHT_THEME_STYLES = {
   base: "rgba(255, 255, 255, 1)",
@@ -16,8 +17,8 @@ const LIGHT_THEME_STYLES = {
   accent_primary: "#FFFFFF",
   button_radius: 8,
   input_radius: 8,
-  sheet_radius: 12,
-  compact_sheet_radius: 12,
+  sheet_radius: "calc(var(--el-button-radius) + 6px)",
+  compact_sheet_radius: "calc(var(--el-button-radius) + 12px)",
 };
 
 const DARK_THEME_STYLES = {
@@ -33,12 +34,13 @@ const DARK_THEME_STYLES = {
   accent_primary: "#311921",
   button_radius: 8,
   input_radius: 8,
-  sheet_radius: 12,
-  compact_sheet_radius: 12,
+  sheet_radius: "calc(var(--el-button-radius) + 6px)",
+  compact_sheet_radius: "calc(var(--el-button-radius) + 12px)",
 };
 import { Style } from "./styles/Style";
 import { AttributesProvider } from "./contexts/attributes";
 import { ServerLocationProvider } from "./contexts/server-location";
+import { OrchestratorProvider } from "./contexts/orchestrator-config";
 import { WidgetConfigProvider } from "./contexts/widget-config";
 import "preact/debug";
 import { TextContentsProvider } from "./contexts/text-contents";
@@ -50,18 +52,29 @@ import { SessionConfigProvider } from "./contexts/session-config";
 import { AvatarConfigProvider } from "./contexts/avatar-config";
 import { TermsProvider } from "./contexts/terms";
 import { SheetContentProvider } from "./contexts/sheet-content";
-import {
-  ConversationContext,
-  type TranscriptEntry,
-} from "./contexts/conversation";
-import { Status, Mode, Role } from "@elevenlabs/client";
+import { ConversationContext, type TranscriptEntry } from "./contexts/conversation";
+import { Status, Mode } from "@elevenlabs/client";
 
 import { FeedbackProvider } from "./contexts/feedback";
+import { EndConfirmationProvider } from "./contexts/end-confirmation";
 import { ShadowHostProvider } from "./contexts/shadow-host";
 
 import { Wrapper } from "./widget/Wrapper";
+import { TranscriptMessage } from "./widget/TranscriptMessage";
+import type { DisplayTranscriptEntry } from "./utils/display-transcript";
+import type { WidgetConfig } from "./types/config";
 
 const STORAGE_KEY = "markdown-playground-text";
+const RENDER_MODE_STORAGE_KEY = "markdown-playground-render-mode";
+const STRIP_AUDIO_TAGS_STORAGE_KEY = "markdown-playground-strip-audio-tags";
+
+type TranscriptRenderMode = "text" | "voice";
+
+const VOICE_SAMPLE_TEXT =
+  "[happy] Hello! [excited] How can I help you today?\n\n" +
+  "Voice transcripts render **markdown** and [links](https://elevenlabs.io) too, " +
+  "with audio tags styled on top.";
+
 const DEFAULT_TEXT =
   "Hey, how can I help you?\n\n" +
   "---\n\n" +
@@ -90,34 +103,133 @@ const DEFAULT_TEXT =
   "```\n\n" +
   "Try editing the text on the left to see live updates!";
 
+const INLINE_HOST_CLASS = "dev-host dev-host--inline";
+
+function buildPlaygroundWidgetConfig({
+  theme,
+  allowedDomains,
+  stripAudioTags,
+  renderMode,
+}: {
+  theme: "light" | "dark";
+  allowedDomains: string[];
+  stripAudioTags: boolean;
+  renderMode: TranscriptRenderMode;
+}): WidgetConfig {
+  return {
+    variant: "full",
+    placement: "bottom-right",
+    avatar: {
+      type: "orb",
+      color_1: "#2E2E2E",
+      color_2: "#B8B8B8",
+    },
+    feedback_mode: "none",
+    language: "en",
+    supported_language_overrides: ["en"],
+    mic_muting_enabled: false,
+    transcript_enabled: true,
+    text_input_enabled: true,
+    default_expanded: true,
+    always_expanded: false,
+    dismissible: false,
+    text_contents: {},
+    language_presets: {},
+    disable_banner: true,
+    text_only: renderMode === "text",
+    supports_text_only: true,
+    strip_audio_tags: stripAudioTags,
+    styles: theme === "light" ? LIGHT_THEME_STYLES : DARK_THEME_STYLES,
+    syntax_highlight_theme: theme === "light" ? "light" : "dark",
+    markdown_link_allowed_hosts: allowedDomains.map((hostname) => ({ hostname })),
+  };
+}
+
+function PlaygroundProviders({
+  widgetConfig,
+  children,
+}: {
+  widgetConfig: WidgetConfig;
+  children: ComponentChildren;
+}) {
+  return (
+    <ShadowHostProvider>
+      <AttributesProvider
+        value={{
+          "agent-id": import.meta.env.VITE_AGENT_ID,
+          "override-config": JSON.stringify(widgetConfig),
+        }}
+      >
+        <ServerLocationProvider>
+          <OrchestratorProvider>
+            <WidgetConfigProvider>{children}</WidgetConfigProvider>
+          </OrchestratorProvider>
+        </ServerLocationProvider>
+      </AttributesProvider>
+    </ShadowHostProvider>
+  );
+}
+
+function InlineAgentPreview({
+  messageSignal,
+  isText,
+}: {
+  messageSignal: Signal<string>;
+  isText: boolean;
+}) {
+  const [message, setMessage] = useState(messageSignal.value);
+  useSignalEffect(() => {
+    setMessage(messageSignal.value);
+  });
+
+  const entry = useMemo<DisplayTranscriptEntry>(
+    () => ({
+      type: "message",
+      role: "agent",
+      message,
+      isText,
+      conversationIndex: 0,
+    }),
+    [message, isText]
+  );
+
+  if (!message) {
+    return <p className="text-sm opacity-60">Enter text on the left to preview.</p>;
+  }
+
+  return <TranscriptMessage entry={entry} animateIn={false} />;
+}
+
 // Mock conversation provider for the markdown playground
 function MockConversationProvider({
   displayTextSignal,
+  agentIsTextSignal,
   children,
 }: {
   displayTextSignal: Signal<string>;
+  agentIsTextSignal: Signal<boolean>;
   children: any;
 }) {
   const mockTranscript = useComputed<TranscriptEntry[]>(() => [
     {
       type: "message",
-      role: "ai" as Role,
+      role: "agent",
       message: "Hello, how can I help you?",
       isText: true,
       conversationIndex: 0,
     },
     {
       type: "message",
-      role: "user" as Role,
+      role: "user",
       message: "hi",
       isText: true,
       conversationIndex: 1,
     },
     {
       type: "message",
-      role: "ai" as Role,
+      role: "agent",
       message: displayTextSignal.value,
-      isText: true,
+      isText: agentIsTextSignal.value,
       conversationIndex: 2,
     },
   ]);
@@ -133,7 +245,14 @@ function MockConversationProvider({
       canSendFeedback: signal(false),
       conversationIndex: signal(0),
       conversationTextOnly: signal<boolean | null>(null),
+      lastUserActivity: signal(0),
       transcript: mockTranscript,
+      isAgentTyping: signal(false),
+      isAwaitingReply: signal(false),
+      isAgentThinking: signal(false),
+      isExternalAgentMode: signal(false),
+      queueStatus: signal<string | null>(null),
+      isWaitingForAgent: signal(false),
       startSession: async () => "",
       endSession: async () => {},
       getInputVolume: () => 0,
@@ -142,105 +261,86 @@ function MockConversationProvider({
       setMicMuted: () => {},
       sendFeedback: () => {},
       sendUserMessage: () => {},
+      sendMultimodalMessage: () => {},
       sendUserActivity: () => {},
+      sendContextualUpdate: () => {},
       addModeToggleEntry: () => {},
+      isResumedSession: signal(false),
+      isResuming: signal(false),
+      hasStoredSession: signal(false),
+      pendingNavigationResume: signal(null),
+      navigationResumeMicMuted: signal(false),
+      continueNavigationCall: async () => undefined,
+      storeNavigationResume: () => {},
+      resumeSession: async () => {},
+      disconnectSession: async () => {},
     }),
     [mockTranscript]
   );
 
-  return (
-    <ConversationContext.Provider value={mockValue}>
-      {children}
-    </ConversationContext.Provider>
-  );
+  return <ConversationContext.Provider value={mockValue}>{children}</ConversationContext.Provider>;
 }
 
 function WidgetSandbox({
-  theme,
+  widgetConfig,
   displayTextSignal,
-  allowedDomains,
+  agentIsTextSignal,
+  theme,
 }: {
-  theme: "light" | "dark";
+  widgetConfig: WidgetConfig;
   displayTextSignal: Signal<string>;
-  allowedDomains: string[];
+  agentIsTextSignal: Signal<boolean>;
+  theme: "light" | "dark";
 }) {
   return (
-    <ShadowHostProvider>
-      <AttributesProvider
-        value={{
-          "agent-id": import.meta.env.VITE_AGENT_ID,
-          "override-config": JSON.stringify({
-          variant: "full",
-          placement: "bottom-right",
-          avatar: {
-            type: "orb",
-            color_1: "#2E2E2E",
-            color_2: "#B8B8B8",
-          },
-          feedback_mode: "none",
-          language: "en",
-          supported_language_overrides: ["en"],
-          mic_muting_enabled: false,
-          transcript_enabled: true,
-          text_input_enabled: true,
-          default_expanded: true,
-          always_expanded: false,
-          text_contents: {},
-          language_presets: {},
-          disable_banner: true,
-          text_only: true,
-          supports_text_only: true,
-          styles: theme === "light" ? LIGHT_THEME_STYLES : DARK_THEME_STYLES,
-          syntax_highlight_theme: theme === "light" ? "light" : "dark",
-          markdown_link_allowed_hosts: allowedDomains.map(d => ({ hostname: d })),
-        }),
-      }}
-    >
-      <ServerLocationProvider>
-        <WidgetConfigProvider>
-          <WidgetSizeProvider>
-            <LanguageConfigProvider>
-              <TermsProvider>
-                <SessionConfigProvider>
-                  <MockConversationProvider
-                    displayTextSignal={displayTextSignal}
-                  >
-                    <ConversationModeProvider>
-                      <AudioConfigProvider>
-                        <TextContentsProvider>
-                          <AvatarConfigProvider>
-                            <SheetContentProvider>
-                              <FeedbackProvider>
-                                <div className="dev-host">
-                                  <Style />
-                                  <Wrapper />
-                                  {theme === "dark" && (
-                                    <style>{`
+    <PlaygroundProviders widgetConfig={widgetConfig}>
+      <WidgetSizeProvider>
+        <LanguageConfigProvider>
+          <TermsProvider>
+            <SessionConfigProvider>
+              <MockConversationProvider
+                displayTextSignal={displayTextSignal}
+                agentIsTextSignal={agentIsTextSignal}
+              >
+                <ConversationModeProvider>
+                  <AudioConfigProvider>
+                    <TextContentsProvider>
+                      <AvatarConfigProvider>
+                        <SheetContentProvider>
+                          <FeedbackProvider>
+                            <EndConfirmationProvider>
+                              <div className="dev-host">
+                                <Style />
+                                <Wrapper />
+                                {theme === "dark" && (
+                                  <style>{`
                                 .dev-host {
                                   scrollbar-color: #4b5563 transparent !important;
                                 }
                               `}</style>
-                                  )}
-                                </div>
-                              </FeedbackProvider>
-                            </SheetContentProvider>
-                          </AvatarConfigProvider>
-                        </TextContentsProvider>
-                      </AudioConfigProvider>
-                    </ConversationModeProvider>
-                  </MockConversationProvider>
-                </SessionConfigProvider>
-              </TermsProvider>
-            </LanguageConfigProvider>
-          </WidgetSizeProvider>
-        </WidgetConfigProvider>
-      </ServerLocationProvider>
-    </AttributesProvider>
-    </ShadowHostProvider>
+                                )}
+                              </div>
+                            </EndConfirmationProvider>
+                          </FeedbackProvider>
+                        </SheetContentProvider>
+                      </AvatarConfigProvider>
+                    </TextContentsProvider>
+                  </AudioConfigProvider>
+                </ConversationModeProvider>
+              </MockConversationProvider>
+            </SessionConfigProvider>
+          </TermsProvider>
+        </LanguageConfigProvider>
+      </WidgetSizeProvider>
+    </PlaygroundProviders>
   );
 }
 
 const ALLOWED_DOMAINS_STORAGE_KEY = "markdown-playground-allowed-domains";
+
+function parseRenderMode(stored: string | null): TranscriptRenderMode {
+  return stored === "voice" ? "voice" : "text";
+}
 
 function MarkdownPlayground() {
   const [text, setText] = useState(() => {
@@ -251,15 +351,42 @@ function MarkdownPlayground() {
     const stored = localStorage.getItem(ALLOWED_DOMAINS_STORAGE_KEY);
     return stored ?? "*";
   });
+  const [renderMode, setRenderMode] = useState<TranscriptRenderMode>(() =>
+    parseRenderMode(localStorage.getItem(RENDER_MODE_STORAGE_KEY))
+  );
+  const [stripAudioTags, setStripAudioTags] = useState(
+    () => localStorage.getItem(STRIP_AUDIO_TAGS_STORAGE_KEY) === "true"
+  );
   const [isStreaming, setIsStreaming] = useState(false);
   const [theme, setTheme] = useState<"light" | "dark">("dark");
   const displayTextSignal = useSignal(text);
+  const agentIsTextSignal = useSignal(renderMode === "text");
+
+  useEffect(() => {
+    agentIsTextSignal.value = renderMode === "text";
+  }, [renderMode]);
 
   const allowedDomains = useMemo(() => {
     const trimmed = allowedDomainsInput.trim();
     if (!trimmed) return [];
-    return trimmed.split(",").map(d => d.trim()).filter(Boolean);
+    return trimmed
+      .split(",")
+      .map((d) => d.trim())
+      .filter(Boolean);
   }, [allowedDomainsInput]);
+
+  const widgetConfig = useMemo(
+    () =>
+      buildPlaygroundWidgetConfig({
+        theme,
+        allowedDomains,
+        stripAudioTags,
+        renderMode,
+      }),
+    [theme, allowedDomains, stripAudioTags, renderMode]
+  );
+
+  const agentIsText = renderMode === "text";
 
   useEffect(() => {
     localStorage.setItem(STORAGE_KEY, text);
@@ -272,8 +399,20 @@ function MarkdownPlayground() {
     localStorage.setItem(ALLOWED_DOMAINS_STORAGE_KEY, allowedDomainsInput);
   }, [allowedDomainsInput]);
 
+  useEffect(() => {
+    localStorage.setItem(RENDER_MODE_STORAGE_KEY, renderMode);
+  }, [renderMode]);
+
+  useEffect(() => {
+    localStorage.setItem(STRIP_AUDIO_TAGS_STORAGE_KEY, String(stripAudioTags));
+  }, [stripAudioTags]);
+
+  const loadSampleForMode = (mode: TranscriptRenderMode) => {
+    setText(mode === "voice" ? VOICE_SAMPLE_TEXT : DEFAULT_TEXT);
+  };
+
   const toggleTheme = () => {
-    setTheme(prev => (prev === "light" ? "dark" : "light"));
+    setTheme((prev) => (prev === "light" ? "dark" : "light"));
   };
 
   const startStreaming = () => {
@@ -309,18 +448,61 @@ function MarkdownPlayground() {
 
   return (
     <>
+      <style>{`
+        .dev-host--inline {
+          position: relative !important;
+          inset: auto !important;
+          pointer-events: auto !important;
+          width: 100%;
+          height: auto;
+          min-height: 8rem;
+          z-index: auto !important;
+        }
+      `}</style>
       <div className={`w-screen h-screen flex ${bgClass} ${textClass}`}>
-        <div
-          className={`w-1/2 h-full flex flex-col p-4 border-r ${borderClass}`}
-        >
+        <div className={`w-1/2 h-full flex flex-col p-4 border-r ${borderClass}`}>
           <h2 className="text-xl font-medium mb-4">Input</h2>
+          <div className="mb-4 space-y-3 shrink-0">
+            <div>
+              <label className="block text-sm font-medium mb-1">Agent message render mode</label>
+              <select
+                className={`w-full p-2 border rounded focus:outline-none focus:ring-2 focus:ring-blue-500 ${inputBgClass} ${borderClass}`}
+                value={renderMode}
+                onChange={(e) => setRenderMode(parseRenderMode(e.currentTarget.value))}
+              >
+                <option value="text">Text — markdown</option>
+                <option value="voice">Voice — markdown + styled audio tags</option>
+              </select>
+            </div>
+            {renderMode === "voice" && (
+              <label className="flex items-center gap-2 text-sm">
+                <input
+                  type="checkbox"
+                  checked={stripAudioTags}
+                  onChange={(e) => setStripAudioTags(e.currentTarget.checked)}
+                />
+                Strip audio tags (widget strip_audio_tags)
+              </label>
+            )}
+            <button
+              type="button"
+              onClick={() => loadSampleForMode(renderMode)}
+              className="text-sm underline opacity-80 hover:opacity-100"
+            >
+              Load sample for {renderMode} mode
+            </button>
+          </div>
           <textarea
             className={`flex-1 p-4 border rounded resize-none focus:outline-none focus:ring-2 focus:ring-blue-500 ${inputBgClass} ${borderClass}`}
             value={text}
-            onChange={e => setText(e.currentTarget.value)}
-            placeholder="Enter markdown text here..."
+            onChange={(e) => setText(e.currentTarget.value)}
+            placeholder={
+              renderMode === "voice"
+                ? "Enter voice transcript text (e.g. [happy] Hello!)"
+                : "Enter markdown text here..."
+            }
           />
-          <div className="mt-4">
+          <div className="mt-4 shrink-0">
             <label className="block text-sm font-medium mb-1">
               Allowed Link Domains (comma-separated, * for all)
             </label>
@@ -328,15 +510,15 @@ function MarkdownPlayground() {
               type="text"
               className={`w-full p-2 border rounded focus:outline-none focus:ring-2 focus:ring-blue-500 ${inputBgClass} ${borderClass}`}
               value={allowedDomainsInput}
-              onChange={e => setAllowedDomainsInput(e.currentTarget.value)}
+              onChange={(e) => setAllowedDomainsInput(e.currentTarget.value)}
               placeholder="e.g. elevenlabs.io, example.com or * for all"
             />
           </div>
         </div>
 
-        <div className="w-1/2 h-full flex flex-col p-4">
-          <div className="flex items-center justify-between mb-4">
-            <h2 className="text-xl font-medium">Widget Preview</h2>
+        <div className="w-1/2 h-full flex flex-col min-h-0 p-4">
+          <div className="flex items-center justify-between mb-3 shrink-0">
+            <h2 className="text-xl font-medium">Agent message preview</h2>
             <div className="flex gap-2">
               <button
                 onClick={toggleTheme}
@@ -354,9 +536,27 @@ function MarkdownPlayground() {
               </button>
             </div>
           </div>
+          <p className="text-xs opacity-70 mb-3 shrink-0">
+            Uses production TranscriptMessage. Full widget sheet is overlaid bottom-right.
+          </p>
+          <div
+            className={`flex-1 min-h-0 overflow-y-auto rounded border p-4 ${borderClass} ${inputBgClass}`}
+          >
+            <PlaygroundProviders widgetConfig={widgetConfig}>
+              <div className={INLINE_HOST_CLASS}>
+                <Style />
+                <InlineAgentPreview messageSignal={displayTextSignal} isText={agentIsText} />
+              </div>
+            </PlaygroundProviders>
+          </div>
         </div>
       </div>
-      <WidgetSandbox theme={theme} displayTextSignal={displayTextSignal} allowedDomains={allowedDomains} />
+      <WidgetSandbox
+        widgetConfig={widgetConfig}
+        theme={theme}
+        displayTextSignal={displayTextSignal}
+        agentIsTextSignal={agentIsTextSignal}
+      />
     </>
   );
 }

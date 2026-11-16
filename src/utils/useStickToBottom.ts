@@ -2,6 +2,7 @@ import { Signal } from "@preact/signals";
 import { useCallback, useEffect, useRef } from "preact/compat";
 
 const SCROLL_PIN_PADDING = 16;
+const GESTURE_WINDOW_MS = 300;
 
 export function useStickToBottom({ scrollPinned }: { scrollPinned: Signal<boolean> }) {
   const scrollContainer = useRef<HTMLDivElement>(null);
@@ -18,15 +19,20 @@ export function useStickToBottom({ scrollPinned }: { scrollPinned: Signal<boolea
     });
   }, []);
 
-  const handleWheel = useCallback(
-    (e: WheelEvent) => {
-      // Only unpin when scrolling up (away from bottom)
-      if (e.deltaY < 0) {
-        scrollPinned.value = false;
-      }
-    },
-    [scrollPinned]
-  );
+  const jumpToLatest = useCallback(() => {
+    scrollPinned.value = true;
+    scrollToBottom();
+  }, [scrollPinned, scrollToBottom]);
+
+  // Gestures only mark intent; unpin once the transcript actually moves up
+  const lastUpwardGesture = useRef(0);
+  const lastScrollTop = useRef(0);
+
+  const handleWheel = useCallback((e: WheelEvent) => {
+    if (e.deltaY < 0) {
+      lastUpwardGesture.current = performance.now();
+    }
+  }, []);
 
   const lastTouchY = useRef<number | null>(null);
 
@@ -37,19 +43,16 @@ export function useStickToBottom({ scrollPinned }: { scrollPinned: Signal<boolea
     }
   }, []);
 
-  const handleTouchMove = useCallback(
-    (e: TouchEvent) => {
-      const touch = e.touches[0];
-      if (touch && lastTouchY.current !== null) {
-        // If moving finger down, user is scrolling up (away from bottom)
-        if (touch.clientY > lastTouchY.current) {
-          scrollPinned.value = false;
-        }
-        lastTouchY.current = touch.clientY;
+  const handleTouchMove = useCallback((e: TouchEvent) => {
+    const touch = e.touches[0];
+    if (touch && lastTouchY.current !== null) {
+      // If moving finger down, user is scrolling up (away from bottom)
+      if (touch.clientY > lastTouchY.current) {
+        lastUpwardGesture.current = performance.now();
       }
-    },
-    [scrollPinned]
-  );
+      lastTouchY.current = touch.clientY;
+    }
+  }, []);
 
   const handleScroll = useCallback(() => {
     const container = scrollContainer.current;
@@ -57,11 +60,31 @@ export function useStickToBottom({ scrollPinned }: { scrollPinned: Signal<boolea
 
     const { scrollTop, scrollHeight, clientHeight } = container;
     const isAtBottom = scrollHeight - scrollTop - clientHeight <= SCROLL_PIN_PADDING;
+    const movedUp = scrollTop < lastScrollTop.current;
+    lastScrollTop.current = scrollTop;
 
     if (isAtBottom) {
       scrollPinned.value = true;
+    } else if (movedUp && performance.now() - lastUpwardGesture.current < GESTURE_WINDOW_MS) {
+      scrollPinned.value = false;
     }
   }, [scrollPinned]);
+
+  useEffect(() => {
+    const container = scrollContainer.current;
+    if (!container) return;
+
+    // Passive so the browser never waits on these handlers before scrolling
+    const options = { passive: true };
+    container.addEventListener("wheel", handleWheel, options);
+    container.addEventListener("touchstart", handleTouchStart, options);
+    container.addEventListener("touchmove", handleTouchMove, options);
+    return () => {
+      container.removeEventListener("wheel", handleWheel);
+      container.removeEventListener("touchstart", handleTouchStart);
+      container.removeEventListener("touchmove", handleTouchMove);
+    };
+  }, [handleWheel, handleTouchStart, handleTouchMove]);
 
   useEffect(() => {
     firstRender.current = false;
@@ -92,9 +115,7 @@ export function useStickToBottom({ scrollPinned }: { scrollPinned: Signal<boolea
     scrollContainer,
     contentRef,
     handleScroll,
-    handleWheel,
-    handleTouchStart,
-    handleTouchMove,
     firstRender,
+    jumpToLatest,
   };
 }

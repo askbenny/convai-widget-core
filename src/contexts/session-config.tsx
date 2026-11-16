@@ -5,9 +5,11 @@ import { createContext } from "preact/compat";
 import { useEffect, useMemo, useRef } from "preact/hooks";
 import { useAttribute } from "./attributes";
 import { useLanguageConfig } from "./language-config";
+import { useOrchestrator } from "./orchestrator-config";
 import { useContextSafely } from "../utils/useContextSafely";
 import { parseBoolAttribute } from "../types/attributes";
 import { useTextOnly } from "./widget-config";
+import { parseDynamicVariables } from "../utils/dynamicVariables";
 import {
   applyManagedSession,
   fetchWidgetConfig,
@@ -15,7 +17,6 @@ import {
   PublicAgentConfig,
 } from "../utils/managed-session";
 
-type DynamicVariables = Record<string, string | number | boolean>;
 const SessionConfigContext = createContext<{
   config: ReadonlySignal<SessionConfig>;
   prepare: (config: SessionConfig) => Promise<SessionConfig>;
@@ -25,14 +26,17 @@ const SessionConfigContext = createContext<{
 } | null>(null);
 
 export function SessionConfigProvider({ children }: { children: ComponentChildren }) {
-  const { language } = useLanguageConfig();
+  const { language, languageOverride } = useLanguageConfig();
+  const orchestrator = useOrchestrator();
   const overrideSpeed = useAttribute("override-speed");
   const overrideStability = useAttribute("override-stability");
   const overrideSimilarityBoost = useAttribute("override-similarity-boost");
+  const overrideCloneStrength = useAttribute("override-clone-strength");
   const overrideFirstMessage = useAttribute("override-first-message");
   const overrideVoiceId = useAttribute("override-voice-id");
   const overrideTextOnly = useAttribute("override-text-only");
   const userId = useAttribute("user-id");
+  const persistentSession = useAttribute("persistent-session");
   const agentId = useAttribute("agent-id");
   const signedUrl = useAttribute("signed-url");
   const environment = useAttribute("environment");
@@ -43,16 +47,9 @@ export function SessionConfigProvider({ children }: { children: ComponentChildre
   const aliveRef = useRef(true);
   const generationRef = useRef(0);
   const dynamicVariablesJSON = useAttribute("dynamic-variables");
-  const dynamicVariables = useComputed(() => {
-    try {
-      const value = JSON.parse(dynamicVariablesJSON.value || "{}");
-      return value && typeof value === "object" && !Array.isArray(value)
-        ? (value as DynamicVariables)
-        : {};
-    } catch {
-      return {};
-    }
-  });
+  const dynamicVariables = useComputed(
+    () => parseDynamicVariables(dynamicVariablesJSON.value) ?? {}
+  );
   const rawAudioProcessor = useAttribute("worklet-path-raw-audio-processor");
   const audioConcatProcessor = useAttribute("worklet-path-audio-concat-processor");
   const libsamplerate = useAttribute("worklet-path-libsamplerate");
@@ -61,7 +58,7 @@ export function SessionConfigProvider({ children }: { children: ComponentChildre
     fetched.value = null;
     const controller = new AbortController();
     presentationRequestRef.current = controller;
-    if (agentId.value && !signedUrl.value) {
+    if (agentId.value && !signedUrl.value && !orchestrator.enabled.value) {
       fetchWidgetConfig(agentId.value, environment.value, controller.signal)
         .then((config) => {
           if (!controller.signal.aborted) fetched.value = config;
@@ -74,7 +71,7 @@ export function SessionConfigProvider({ children }: { children: ComponentChildre
       controller.abort();
       requestRef.current?.abort();
     };
-  }, [agentId.value, environment.value, signedUrl.value]);
+  }, [agentId.value, environment.value, signedUrl.value, orchestrator.enabled.value]);
 
   useEffect(() => {
     aliveRef.current = true;
@@ -87,8 +84,13 @@ export function SessionConfigProvider({ children }: { children: ComponentChildre
   const config = useComputed<SessionConfig>(
     () =>
       ({
-        // A placeholder is never passed to the SDK: prepare obtains the session at start.
-        signedUrl: signedUrl.value || "",
+        // Never passed to the SDK as is: prepare signs a session for the widget's
+        // agent branch at start and replaces these connection fields. The agent id
+        // keys stored text sessions in the visitor's browser.
+        ...(signedUrl.value || !agentId.value
+          ? { signedUrl: signedUrl.value || "" }
+          : { agentId: agentId.value }),
+        persistentSession: parseBoolAttribute(persistentSession.value) || undefined,
         connectionType: "websocket",
         dynamicVariables: dynamicVariables.value,
         overrides: {
@@ -102,6 +104,9 @@ export function SessionConfigProvider({ children }: { children: ComponentChildre
             stability: overrideStability.value ? parseFloat(overrideStability.value) : undefined,
             similarityBoost: overrideSimilarityBoost.value
               ? parseFloat(overrideSimilarityBoost.value)
+              : undefined,
+            cloneStrength: overrideCloneStrength.value
+              ? parseFloat(overrideCloneStrength.value)
               : undefined,
           },
           conversation: {
@@ -146,12 +151,27 @@ export function SessionConfigProvider({ children }: { children: ComponentChildre
         const env = environment.peek();
         const explicitUrl = signedUrl.peek();
         if (!aliveRef.current) throw new Error("Conversation cancelled.");
+        // A self-hosted orchestrator owns its own sessions, like an explicit signed URL.
+        const orchestratorConfig = orchestrator.config.peek();
+        if (orchestratorConfig) {
+          const { signedUrl: _url, ...rest } = requested as SessionConfig & { signedUrl?: string };
+          return {
+            ...rest,
+            orchestrator: orchestratorConfig,
+            connectionType: "websocket",
+            overrides: {
+              ...requested.overrides,
+              agent: { ...requested.overrides?.agent, language: languageOverride.peek() },
+            },
+          } as SessionConfig;
+        }
         // Explicit signed sessions remain supported for callers owning session acquisition.
         if (explicitUrl)
           return {
             ...requested,
             agentId: undefined,
             conversationToken: undefined,
+            orchestrator: undefined,
             signedUrl: explicitUrl,
             connectionType: "websocket",
           };

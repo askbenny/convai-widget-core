@@ -39,13 +39,12 @@ export function TextContentsProvider({ children }: TextContentsProviderProps) {
 
   const value = useMemo(() => {
     return Object.fromEntries(
-      TextKeys.map(key => [
+      TextKeys.map((key) => [
         key,
         computed(
           () =>
             parsedTextContents.value[key] ??
-            config.value.language_presets?.[language.value.languageCode]
-              ?.text_contents?.[key] ??
+            config.value.language_presets?.[language.value.languageCode]?.text_contents?.[key] ??
             config.value.text_contents?.[key] ??
             DefaultTextContents[key]
         ),
@@ -53,11 +52,7 @@ export function TextContentsProvider({ children }: TextContentsProviderProps) {
     ) as TextContentsType;
   }, []);
 
-  return (
-    <TextContentsContext.Provider value={value}>
-      {children}
-    </TextContentsContext.Provider>
-  );
+  return <TextContentsContext.Provider value={value}>{children}</TextContentsContext.Provider>;
 }
 
 export function useTextContents() {

@@ -1,6 +1,7 @@
 import { Style } from "../styles/Style";
 import { AttributesProvider } from "../contexts/attributes";
 import { LanguageConfigProvider } from "../contexts/language-config";
+import { OrchestratorProvider } from "../contexts/orchestrator-config";
 import { WidgetConfigProvider } from "../contexts/widget-config";
 import { AudioConfigProvider } from "../contexts/audio-config";
 import { ServerLocationProvider } from "../contexts/server-location";
@@ -16,38 +17,46 @@ import { FeedbackProvider } from "../contexts/feedback";
 import { ShadowHostProvider } from "../contexts/shadow-host";
 import { WidgetSizeProvider } from "../contexts/widget-size";
 import { ConversationModeProvider } from "../contexts/conversation-mode";
+import { EventBridge } from "./EventBridge";
+import { EndConfirmationProvider } from "../contexts/end-confirmation";
 
 export function ConvAIWidget(attributes: CustomAttributes) {
   return (
     <ShadowHostProvider>
       <AttributesProvider value={attributes}>
         <ServerLocationProvider>
-          <WidgetConfigProvider>
-            <WidgetSizeProvider>
-              <LanguageConfigProvider>
-                <TermsProvider>
-                  <SessionConfigProvider>
-                    <ConversationProvider>
-                      <ConversationModeProvider>
-                        <AudioConfigProvider>
-                          <TextContentsProvider>
-                            <AvatarConfigProvider>
-                              <SheetContentProvider>
-                                <FeedbackProvider>
-                                  <Style />
-                                  <Wrapper />
-                                </FeedbackProvider>
-                              </SheetContentProvider>
-                            </AvatarConfigProvider>
-                          </TextContentsProvider>
-                        </AudioConfigProvider>
-                      </ConversationModeProvider>
-                    </ConversationProvider>
-                  </SessionConfigProvider>
-                </TermsProvider>
-              </LanguageConfigProvider>
-            </WidgetSizeProvider>
-          </WidgetConfigProvider>
+          <OrchestratorProvider>
+            <WidgetConfigProvider>
+              <WidgetSizeProvider>
+                <LanguageConfigProvider>
+                  <TermsProvider>
+                    <SessionConfigProvider>
+                      <ConversationProvider>
+                        <ConversationModeProvider>
+                          <AudioConfigProvider>
+                            <TextContentsProvider>
+                              <AvatarConfigProvider>
+                                <SheetContentProvider>
+                                  <FeedbackProvider>
+                                    <Style />
+                                    <EndConfirmationProvider>
+                                      <EventBridge>
+                                        <Wrapper />
+                                      </EventBridge>
+                                    </EndConfirmationProvider>
+                                  </FeedbackProvider>
+                                </SheetContentProvider>
+                              </AvatarConfigProvider>
+                            </TextContentsProvider>
+                          </AudioConfigProvider>
+                        </ConversationModeProvider>
+                      </ConversationProvider>
+                    </SessionConfigProvider>
+                  </TermsProvider>
+                </LanguageConfigProvider>
+              </WidgetSizeProvider>
+            </WidgetConfigProvider>
+          </OrchestratorProvider>
         </ServerLocationProvider>
       </AttributesProvider>
     </ShadowHostProvider>

@@ -1,5 +1,15 @@
 # Changes
 
+## 1.5.0
+
+Brings the widget up to date with the ElevenLabs widget (`@elevenlabs/convai-widget-core` 0.26.0, `@elevenlabs/client` 1.36.1), keeping Ask Benny's managed sessions, branding, orbs and privacy choices.
+
+- New from upstream: file and image upload, agent message attachments, rich content (carousels, product cards, button groups and quick replies), an optional end-of-chat confirmation, a full-page layout, a default size, opening fullscreen on phones, a segmented voice/text toggle, a "new messages" button, typing and thinking indicators, transcripts that follow the agent's speech, audio tag styling, right-to-left text, the concurrency wait-queue status, human takeover typing, and client events dispatched on the host element (`allow-events`).
+- Transcript ordering now uses server message order and response IDs. Servers without response IDs keep the 1.4.14 matching, and a text chat still skips only the greeting's own event, so a first answer sent without the greeting keeps its opening and formatting.
+- Persistent text sessions (`persistent-session`) and continuing a call after page navigation work with Ask Benny's managed sessions: stored sessions are keyed by the widget's agent id, and every connection is still signed for its agent branch. Both stay opt-in.
+- Text chats end after 3 minutes without a message or keystroke (was 10 minutes, the same as the usual maximum duration, so an abandoned chat ran to the limit and was counted that long).
+- Kept on purpose: sessions are signed by Ask Benny for the widget's own agent branch; prompt and LLM overrides stay unavailable; the visitor id is a random id stored in the browser, never a device fingerprint; tool statuses stay scoped to their conversation; Safari input-method composition is still respected.
+
 ## 1.4.18
 
 - Security: update Preact to 10.29.8, past the JSON VNode injection advisory (GHSA-36hm-qxxp-pg3m, fixed in 10.28.2). Preact is the only runtime dependency that changes.

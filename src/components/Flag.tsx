@@ -11,19 +11,10 @@ interface FlagProps extends ImgHTMLAttributes<HTMLImageElement> {
   flagCode: string;
 }
 
-export function Flag({
-  size = "md",
-  flagCode,
-  className,
-  ...props
-}: FlagProps) {
+export function Flag({ size = "md", flagCode, className, ...props }: FlagProps) {
   return (
     <img
-      className={clsx(
-        "rounded-full object-cover",
-        SIZE_CLASSES[size],
-        className
-      )}
+      className={clsx("rounded-full object-cover", SIZE_CLASSES[size], className)}
       src={`https://storage.googleapis.com/eleven-public-cdn/images/flags/circle-flags/${flagCode}.svg`}
       alt={`${flagCode.toUpperCase()} flag`}
       {...props}

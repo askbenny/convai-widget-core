@@ -1,14 +1,25 @@
-import { Signal, useComputed, useSignal } from "@preact/signals";
-import { KeyboardEventHandler, TargetedEvent, useCallback } from "preact/compat";
+import { ReadonlySignal, Signal, useComputed, useSignal, useSignalEffect } from "@preact/signals";
+import { KeyboardEventHandler, TargetedEvent, useCallback, useRef } from "preact/compat";
 import { Button } from "../components/Button";
 import { SizeTransition } from "../components/SizeTransition";
-import { useConversation } from "../contexts/conversation";
+import { useCallButtonDisabled, useConversation } from "../contexts/conversation";
 import { useTextContents } from "../contexts/text-contents";
-import { useIsConversationTextOnly, useTextInputEnabled } from "../contexts/widget-config";
+import {
+  useFileInputEnabled,
+  useFileInputMaxFiles,
+  useIsConversationTextOnly,
+  useTextInputEnabled,
+} from "../contexts/widget-config";
 import { cn } from "../utils/cn";
 import { CallButton } from "./CallButton";
+import { useEndConfirmation } from "../contexts/end-confirmation";
 import { TriggerMuteButton } from "./TriggerMuteButton";
 import { useConversationMode } from "../contexts/conversation-mode";
+import { useSheetContent } from "../contexts/sheet-content";
+import { useWidgetSize } from "../contexts/widget-size";
+import { UploadFileButton } from "./UploadFileButton";
+import { PendingFilePreview } from "./PendingFilePreview";
+import { ACCEPTED_FILE_EXTENSIONS, useFileUpload } from "./useFileUpload";
 
 export function SheetActions({
   showTranscript,
@@ -18,14 +29,103 @@ export function SheetActions({
   scrollPinned: Signal<boolean>;
 }) {
   const textInputEnabled = useTextInputEnabled();
+  const fileInputEnabled = useFileInputEnabled();
+  const maxFiles = useFileInputMaxFiles();
   const userMessage = useSignal("");
   const isFocused = useSignal(false);
-  const { isDisconnected, startSession, sendUserMessage } = useConversation();
+  const text = useTextContents();
+  const {
+    isDisconnected,
+    status,
+    lastId,
+    startSession,
+    sendUserMessage,
+    sendMultimodalMessage,
+    isWaitingForAgent,
+  } = useConversation();
+
+  const fileError = useSignal<string | null>(null);
+  // Auto-dismiss the validation toast 4s after it's set; a new message resets
+  // the timer because useSignalEffect re-runs (and cleans up) on change.
+  useSignalEffect(() => {
+    if (!fileError.value) return;
+    const id = setTimeout(() => {
+      fileError.value = null;
+    }, 4000);
+    return () => clearTimeout(id);
+  });
+
+  // Only expose the conversation id while fully connected — during the
+  // "connecting" phase of a reconnect, `lastId` still holds the previous
+  // conversation's id, which would cause uploads to target the wrong endpoint.
+  const conversationId = status.value === "connected" ? lastId.value : null;
+  const { pendingFile, isUploading, hasReachedLimit, addFile, removeFile, markFileAsSent } =
+    useFileUpload({ conversationId, maxFiles: maxFiles.value });
+
+  // File upload is only exposed alongside the text input — without a
+  // textarea there's nowhere to preview the attachment or send it.
+  const showUploadButton = useComputed(
+    () => fileInputEnabled.value && textInputEnabled.value && !isDisconnected.value
+  );
+  const uploadEnabled = useComputed(
+    () =>
+      !pendingFile.value &&
+      !hasReachedLimit.value &&
+      status.value === "connected" &&
+      !isWaitingForAgent.value
+  );
+
+  const handleFileSelect = useCallback(
+    (file: File) => {
+      const error = addFile(file);
+      if (!error) return;
+      if (error === "unsupported_type") {
+        fileError.value = `${text.file_type_unsupported.peek()} ${ACCEPTED_FILE_EXTENSIONS.join(", ")}.`;
+        return;
+      }
+      const messageByCode = {
+        too_large: text.file_too_large,
+        limit_reached: text.file_limit_reached,
+      };
+      fileError.value = messageByCode[error].peek();
+    },
+    [addFile, text, fileError]
+  );
+
+  const canSend = useComputed(() => {
+    const hasText = !!userMessage.value.trim();
+    const hasReadyFile = pendingFile.value?.status === "ready";
+    return (hasText || hasReadyFile) && !isUploading.value && !isWaitingForAgent.value;
+  });
 
   const handleSendMessage = useCallback(
     async (e: TargetedEvent<HTMLElement>) => {
       e.preventDefault();
+      // Runtime guard — the send button's `disabled` prop and the keydown
+      // canSend check both reflect render-time state, so a click/keypress
+      // racing with an upload starting could otherwise fall through to the
+      // text-only path and silently drop the in-flight file.
+      if (!canSend.peek()) return;
+
       const message = userMessage.value.trim();
+      const pending = pendingFile.value;
+
+      if (pending?.status === "ready" && !isDisconnected.value) {
+        scrollPinned.value = true;
+        sendMultimodalMessage({
+          text: message || undefined,
+          file: {
+            fileId: pending.fileId,
+            fileName: pending.file.name,
+            mimeType: pending.file.type,
+            previewUrl: pending.previewUrl,
+          },
+        });
+        markFileAsSent();
+        userMessage.value = "";
+        return;
+      }
+
       if (message) {
         scrollPinned.value = true;
         userMessage.value = "";
@@ -36,13 +136,28 @@ export function SheetActions({
         }
       }
     },
-    [userMessage, scrollPinned, isDisconnected, startSession, sendUserMessage]
+    [
+      userMessage,
+      scrollPinned,
+      isDisconnected,
+      startSession,
+      sendUserMessage,
+      sendMultimodalMessage,
+      pendingFile,
+      markFileAsSent,
+      canSend,
+    ]
   );
 
   return (
     <div className="sticky bottom-0 pointer-events-none z-10 max-h-[50%] flex flex-col">
-      <div className="absolute top-0 left-0 right-0 h-4 -translate-y-full bg-gradient-to-t from-base to-transparent pointer-events-none backdrop-blur-[1px] [mask-image:linear-gradient(to_top,black,transparent)] shadow-scroll-fade-top" />
+      <div className="absolute top-0 left-0 right-0 h-4 -translate-y-full bg-gradient-to-t from-base group-data-muted/sheet:from-base-hover to-transparent pointer-events-none backdrop-blur-[1px] [mask-image:linear-gradient(to_top,black,transparent)] shadow-scroll-fade-top" />
       <div className="relative w-full px-3 pb-3 flex flex-col items-center pointer-events-auto min-h-0">
+        {fileError.value && (
+          <div className="w-full px-1 pb-1.5 text-xs text-base-error text-center">
+            {fileError.value}
+          </div>
+        )}
         {textInputEnabled.value && (
           <div
             className={cn(
@@ -50,28 +165,40 @@ export function SheetActions({
               isFocused.value && "ring-2 ring-accent"
             )}
           >
+            {pendingFile.value && (
+              <div className="px-3 pt-3">
+                <PendingFilePreview pendingFile={pendingFile.value} onRemove={removeFile} />
+              </div>
+            )}
             <SheetTextarea
               userMessage={userMessage}
               isFocused={isFocused}
+              canSend={canSend}
               onSendMessage={handleSendMessage}
             />
-            <div className="absolute bottom-0 left-0 right-0 flex gap-1.5 items-center justify-end px-3 pb-3 pt-2 pointer-events-none">
-              <div className="pointer-events-auto flex gap-1.5 items-center">
+            <div className="absolute bottom-0 left-0 right-0 flex items-center justify-end px-3 pb-3 pt-2 pointer-events-none">
+              <div className="pointer-events-none flex w-full items-center">
                 <SheetButtons
-                  userMessage={userMessage}
+                  canSend={canSend}
                   onSendMessage={handleSendMessage}
                   showTranscript={showTranscript}
+                  showUploadButton={showUploadButton}
+                  uploadEnabled={uploadEnabled}
+                  onFileSelect={handleFileSelect}
                 />
               </div>
             </div>
           </div>
         )}
         {!textInputEnabled.value && (
-          <div className="w-full flex gap-1.5 items-center justify-end">
+          <div className="w-full flex items-center justify-end">
             <SheetButtons
-              userMessage={userMessage}
+              canSend={canSend}
               onSendMessage={handleSendMessage}
               showTranscript={showTranscript}
+              showUploadButton={showUploadButton}
+              uploadEnabled={uploadEnabled}
+              onFileSelect={handleFileSelect}
             />
           </div>
         )}
@@ -83,15 +210,29 @@ export function SheetActions({
 function SheetTextarea({
   userMessage,
   isFocused,
+  canSend,
   onSendMessage,
 }: {
   userMessage: Signal<string>;
   isFocused: Signal<boolean>;
+  canSend: ReadonlySignal<boolean>;
   onSendMessage: (e: TargetedEvent<HTMLElement>) => Promise<void>;
 }) {
   const text = useTextContents();
   const textOnly = useIsConversationTextOnly();
-  const { isDisconnected, conversationIndex, sendUserActivity } = useConversation();
+  const { isDisconnected, conversationIndex, hasStoredSession, sendUserActivity } =
+    useConversation();
+  const { pendingInputFocus } = useSheetContent();
+  const inputRef = useRef<HTMLTextAreaElement>(null);
+
+  // The message entry point opens the sheet and requests focus here; consume
+  // the request once so later opens (e.g. via the call button) don't steal it.
+  useSignalEffect(() => {
+    if (pendingInputFocus.value) {
+      inputRef.current?.focus();
+      pendingInputFocus.value = false;
+    }
+  });
 
   const handleChange = useCallback(
     (e: TargetedEvent<HTMLTextAreaElement>) => {
@@ -102,12 +243,19 @@ function SheetTextarea({
 
   const handleKeyDown = useCallback<KeyboardEventHandler<HTMLTextAreaElement>>(
     async (e) => {
-      if (e.isComposing || e.keyCode === 229) return;
+      // keyCode 229 covers Safari, which ends composition before keydown.
+      if (e.isComposing || e.keyCode === 229) {
+        return;
+      }
+
       if (e.key === "Enter" && !e.shiftKey) {
-        await onSendMessage(e);
+        e.preventDefault();
+        if (canSend.peek()) {
+          await onSendMessage(e);
+        }
       }
     },
-    [onSendMessage]
+    [onSendMessage, canSend]
   );
 
   const handleFocus = useCallback(() => {
@@ -120,6 +268,8 @@ function SheetTextarea({
 
   return (
     <textarea
+      ref={inputRef}
+      dir="auto"
       aria-label={text.input_label}
       value={userMessage.value}
       onInput={sendUserActivity}
@@ -129,64 +279,101 @@ function SheetTextarea({
       onBlur={handleBlur}
       placeholder={
         textOnly.value
-          ? isDisconnected.value && conversationIndex.value > 0
+          ? isDisconnected.value && conversationIndex.value > 0 && !hasStoredSession.value
             ? text.input_placeholder_new_conversation.value
             : text.input_placeholder_text_only.value
           : text.input_placeholder.value
       }
-      className="w-full h-full resize-none bg-base leading-5 outline-hidden text-sm text-base-primary placeholder:text-base-subtle p-3 pb-[60px] min-h-18 max-h-full field-sizing-content"
+      className="w-full h-full resize-none bg-base leading-5 outline-hidden text-sm text-base-primary placeholder:text-base-subtle p-3 pb-[60px] max-h-full field-sizing-content"
     />
   );
 }
 
 function SheetButtons({
-  userMessage,
+  canSend,
   onSendMessage,
   showTranscript = false,
+  showUploadButton,
+  uploadEnabled,
+  onFileSelect,
 }: {
-  userMessage: Signal<string>;
+  canSend: ReadonlySignal<boolean>;
   onSendMessage: (e: TargetedEvent<HTMLElement>) => Promise<void>;
   showTranscript?: boolean;
+  showUploadButton: ReadonlySignal<boolean>;
+  uploadEnabled: ReadonlySignal<boolean>;
+  onFileSelect: (file: File) => void;
 }) {
   const text = useTextContents();
   const textOnly = useIsConversationTextOnly();
   const textInputEnabled = useTextInputEnabled();
-  const { isDisconnected, status } = useConversation();
+  const { isDisconnected } = useConversation();
+  const { requestEndSession } = useEndConfirmation();
+  const callDisabled = useCallButtonDisabled();
   const { isTextMode } = useConversationMode();
+  const { showSpeechPane } = useWidgetSize();
 
-  const showSendButton = useComputed(() => !!userMessage.value.trim());
-  const showSendButtonControl = useComputed(() => {
-    return textInputEnabled.value;
-  });
+  // Beside the page layout's call pane, only a text chat's stop button stays here
   const showCallButton = useComputed(() => {
-    // 1. Do not show the call button if text only -> user use text input to initiate
-    // 2. Always show the call button for users ends the conversation
+    if (showSpeechPane.value) {
+      return textOnly.value && !isDisconnected.value;
+    }
     return !isDisconnected.value || (!textOnly.value && showTranscript);
   });
   const showMuteButton = useComputed(() => {
-    return !textOnly.value && !isDisconnected.value && !isTextMode.value;
+    return !showSpeechPane.value && !textOnly.value && !isDisconnected.value && !isTextMode.value;
   });
 
   return (
     <>
-      <SizeTransition visible={showMuteButton.value}>
-        <TriggerMuteButton className="bg-base text-base-primary hover:bg-base-hover active:bg-base-active" />
-      </SizeTransition>
-      <SizeTransition visible={showCallButton.value}>
-        <CallButton
+      <SizeTransition visible={showUploadButton.value}>
+        <UploadFileButton
           iconOnly
-          isDisconnected={isDisconnected.value}
-          disabled={status.value === "disconnecting" || status.value === "connecting"}
-          className="bg-base text-base-primary hover:bg-base-hover active:bg-base-active"
+          disabled={!uploadEnabled.value}
+          onFileSelect={onFileSelect}
+          className="pointer-events-auto bg-base text-base-primary hover:bg-base-hover active:bg-base-active"
         />
       </SizeTransition>
-      {showSendButtonControl.value && (
+      <div className="grow" />
+      <SizeTransition visible={showMuteButton.value} className="pr-1.5">
+        <TriggerMuteButton className="pointer-events-auto bg-base text-base-primary hover:bg-base-hover active:bg-base-active" />
+      </SizeTransition>
+      <SizeTransition visible={showCallButton.value} className="pr-1.5">
+        {textOnly.value ? (
+          <div className="group relative pointer-events-auto">
+            <div
+              id="end-chat-tooltip"
+              role="tooltip"
+              className="absolute bottom-full left-1/2 mb-2 -translate-x-1/2 rounded-button bg-accent px-3 py-1.5 text-sm text-accent-primary whitespace-nowrap opacity-0 transition-opacity pointer-events-none group-hover:opacity-100 group-focus-within:opacity-100"
+            >
+              {text.end_chat}
+            </div>
+            <Button
+              variant="secondary"
+              icon="stop"
+              onClick={requestEndSession}
+              disabled={callDisabled.value}
+              aria-label={text.end_chat}
+              aria-describedby="end-chat-tooltip"
+            />
+          </div>
+        ) : (
+          <CallButton
+            iconOnly
+            isDisconnected={isDisconnected.value}
+            disabled={callDisabled.value}
+            className="pointer-events-auto bg-base text-base-primary hover:bg-base-hover active:bg-base-active"
+          />
+        )}
+      </SizeTransition>
+      {textInputEnabled.value && (
         <Button
           icon="send"
           onClick={onSendMessage}
           variant="primary"
-          disabled={!showSendButton.value}
+          disabled={!canSend.value}
           aria-label={text.send_message.value}
+          className="pointer-events-auto"
         />
       )}
     </>

@@ -4,8 +4,7 @@ import { createContext, useMemo } from "preact/compat";
 import { useAttribute } from "./attributes";
 
 import { useContextSafely } from "../utils/useContextSafely";
-import { Location, parseLocation } from "../types/config"
-
+import { Location, parseLocation } from "../types/config";
 
 const ServerLocationContext = createContext<{
   location: ReadonlySignal<Location>;
@@ -17,9 +16,7 @@ interface ServerLocationProviderProps {
   children: ComponentChildren;
 }
 
-export function ServerLocationProvider({
-  children,
-}: ServerLocationProviderProps) {
+export function ServerLocationProvider({ children }: ServerLocationProviderProps) {
   const serverLocation = useAttribute("server-location");
   const value = useMemo(() => {
     const location = computed(() => parseLocation(serverLocation.value));
@@ -41,7 +38,7 @@ export function ServerLocationProvider({
         import.meta.env.VITE_WEBSOCKET_URL_IN_RESIDENCY || "wss://api-in.elevenlabs.io",
       global: import.meta.env.VITE_WEBSOCKET_URL || "wss://api.elevenlabs.io",
     };
-    
+
     return {
       location,
       serverUrl: computed(() => serverUrlMap[location.value]),
@@ -49,11 +46,7 @@ export function ServerLocationProvider({
     };
   }, []);
 
-  return (
-    <ServerLocationContext.Provider value={value}>
-      {children}
-    </ServerLocationContext.Provider>
-  );
+  return <ServerLocationContext.Provider value={value}>{children}</ServerLocationContext.Provider>;
 }
 
 export function useServerLocation() {

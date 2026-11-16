@@ -21,9 +21,7 @@ const BASIC_CONFIG: WidgetConfig = {
   default_expanded: false,
   always_expanded: false,
   dismissible: false,
-  text_contents: {
-    start_chat: "Start a call",
-  },
+  text_contents: {},
   terms_html: "Test terms",
   language_presets: {},
   disable_banner: false,
@@ -31,6 +29,26 @@ const BASIC_CONFIG: WidgetConfig = {
   supports_text_only: true,
   first_message: "Agent response",
   use_rtc: false,
+};
+
+const PERSISTENT_SESSION_AGENT: WidgetConfig = {
+  ...BASIC_CONFIG,
+  text_only: true,
+  transcript_enabled: true,
+  text_input_enabled: true,
+  terms_html: undefined,
+  default_expanded: true,
+  first_message: "Hello from the agent",
+};
+
+const TEXT_CHAT_CONFIG: WidgetConfig = {
+  ...BASIC_CONFIG,
+  text_only: true,
+  transcript_enabled: true,
+  text_input_enabled: true,
+  terms_html: undefined,
+  default_expanded: true,
+  first_message: "",
 };
 
 export const AGENTS = {
@@ -49,6 +67,18 @@ export const AGENTS = {
     disable_banner: true,
   },
   fail: BASIC_CONFIG,
+  // Held in the concurrency wait queue and never admitted.
+  queued: BASIC_CONFIG,
+  // Expanded with no transcript so the avatar overlay renders the waiting copy.
+  queued_overlay: {
+    ...BASIC_CONFIG,
+    text_input_enabled: true,
+    default_expanded: true,
+  },
+  // Admitted from the wait queue after a delay.
+  queue_admit: BASIC_CONFIG,
+  // The wait queue times out and the server closes with an error.
+  queue_timeout: BASIC_CONFIG,
   end_call_test: {
     ...BASIC_CONFIG,
     text_only: true,
@@ -61,12 +91,30 @@ export const AGENTS = {
     terms_html: "<p>Default Terms in English</p>",
     terms_key: "terms_default",
     supported_language_overrides: ["es", "fr"],
+    first_message_rich_content: {
+      component: "buttons",
+      props: {
+        buttons: [{ type: "message", label: "Track my order", message: "Track" }],
+      },
+    },
     language_presets: {
       es: {
         text_contents: {
           start_chat: "Iniciar una llamada",
         },
         first_message: "¡Hola! ¿Cómo puedo ayudarte?",
+        first_message_rich_content: {
+          component: "buttons",
+          props: {
+            buttons: [
+              {
+                type: "message",
+                label: "Rastrear mi pedido",
+                message: "Rastrear",
+              },
+            ],
+          },
+        },
         terms_html: "<p>Términos en Español</p>",
         terms_key: "terms_es",
       },
@@ -75,8 +123,37 @@ export const AGENTS = {
           start_chat: "Commencer un appel",
         },
         first_message: "Bonjour! Comment puis-je vous aider?",
+        first_message_rich_content: {
+          component: "buttons",
+          props: {
+            buttons: [
+              {
+                type: "message",
+                label: "Suivre ma commande",
+                message: "Suivre",
+              },
+            ],
+          },
+        },
         terms_html: "<p>Termes en Français</p>",
         terms_key: "terms_fr",
+      },
+    },
+  },
+  terms_disabled_with_stale_presets: {
+    ...BASIC_CONFIG,
+    text_only: true,
+    default_expanded: true,
+    // Production serialises the kill switch as `null`, not `undefined`.
+    // HttpResponse.json -> JSON.stringify strips `undefined`, so using
+    // `null` keeps the mock faithful to the wire payload.
+    terms_html: null,
+    terms_text: null,
+    supported_language_overrides: ["en"],
+    language_presets: {
+      en: {
+        terms_html: "<p>Stale preset terms</p>",
+        terms_text: "Stale preset terms",
       },
     },
   },
@@ -115,6 +192,23 @@ const codeBlock = true;
 ---
 `,
   },
+  markdown_rtl: {
+    ...BASIC_CONFIG,
+    text_only: true,
+    transcript_enabled: true,
+    text_input_enabled: true,
+    terms_html: undefined,
+    default_expanded: true,
+    first_message: `- النقطة الأولى
+- النقطة الثانية
+
+> ملاحظة: الرسوم غير مستردة.
+
+| الخدمة | السعر |
+| ------ | ----- |
+| الحجز  | ١٠    |
+`,
+  },
   markdown_no_links: {
     ...BASIC_CONFIG,
     text_only: true,
@@ -143,6 +237,16 @@ const codeBlock = true;
     default_expanded: true,
     first_message: `[Relative link](/relative)`,
   },
+  markdown_agent_response: {
+    ...BASIC_CONFIG,
+    text_only: true,
+    transcript_enabled: true,
+    text_input_enabled: true,
+    terms_html: undefined,
+    default_expanded: true,
+    markdown_link_allowed_hosts: [{ hostname: "*" }],
+    first_message: "Agent response",
+  },
   tool_call: {
     ...BASIC_CONFIG,
     text_only: true,
@@ -152,6 +256,129 @@ const codeBlock = true;
     terms_html: undefined,
     default_expanded: true,
     first_message: "",
+  },
+  tool_call_late_final: {
+    ...BASIC_CONFIG,
+    text_only: true,
+    transcript_enabled: true,
+    text_input_enabled: true,
+    show_agent_status: true,
+    terms_html: undefined,
+    default_expanded: true,
+    first_message: "",
+  },
+  final_message_after_tool: {
+    ...BASIC_CONFIG,
+    text_only: true,
+    transcript_enabled: true,
+    text_input_enabled: true,
+    show_agent_status: true,
+    terms_html: undefined,
+    default_expanded: true,
+    first_message: "Before you go, was this conversation helpful today?",
+  },
+  messages_around_tool_call: {
+    ...BASIC_CONFIG,
+    text_only: true,
+    transcript_enabled: true,
+    text_input_enabled: true,
+    show_agent_status: true,
+    terms_html: undefined,
+    default_expanded: true,
+    first_message: "",
+  },
+  refined_final_after_tool_segment: {
+    ...BASIC_CONFIG,
+    text_only: true,
+    transcript_enabled: true,
+    text_input_enabled: true,
+    show_agent_status: true,
+    terms_html: undefined,
+    default_expanded: true,
+    first_message: "",
+  },
+  empty_tool_segment_between_messages: {
+    ...BASIC_CONFIG,
+    text_only: true,
+    transcript_enabled: true,
+    text_input_enabled: true,
+    show_agent_status: true,
+    terms_html: undefined,
+    default_expanded: true,
+    first_message: "",
+  },
+  empty_tool_segment_before_reply: {
+    ...BASIC_CONFIG,
+    text_only: true,
+    transcript_enabled: true,
+    text_input_enabled: true,
+    show_agent_status: true,
+    terms_html: undefined,
+    default_expanded: true,
+    first_message: "",
+  },
+  response_before_stream_tool: {
+    ...BASIC_CONFIG,
+    text_only: true,
+    transcript_enabled: true,
+    text_input_enabled: true,
+    show_agent_status: true,
+    terms_html: undefined,
+    default_expanded: true,
+    first_message: "",
+  },
+  // AWF-314: a response is resent around a webhook tool call.
+  tool_call_response_resend: {
+    ...BASIC_CONFIG,
+    text_only: true,
+    transcript_enabled: true,
+    text_input_enabled: true,
+    show_agent_status: true,
+    terms_html: undefined,
+    default_expanded: true,
+    first_message: "How can I help you today?",
+  },
+  same_text_distinct_responses: {
+    ...BASIC_CONFIG,
+    text_only: true,
+    transcript_enabled: true,
+    text_input_enabled: true,
+    terms_html: undefined,
+    default_expanded: true,
+    first_message: "",
+  },
+  stream_consolidation: {
+    ...BASIC_CONFIG,
+    text_only: true,
+    transcript_enabled: true,
+    text_input_enabled: true,
+    terms_html: undefined,
+    default_expanded: true,
+    first_message: "",
+  },
+  streamed_first_reply: {
+    ...BASIC_CONFIG,
+    text_only: true,
+    transcript_enabled: true,
+    text_input_enabled: true,
+    terms_html: undefined,
+    default_expanded: true,
+  },
+  streamed_first_message: {
+    ...BASIC_CONFIG,
+    text_only: true,
+    transcript_enabled: true,
+    text_input_enabled: true,
+    terms_html: undefined,
+    default_expanded: true,
+  },
+  streamed_first_message_with_final: {
+    ...BASIC_CONFIG,
+    text_only: true,
+    transcript_enabled: true,
+    text_input_enabled: true,
+    terms_html: undefined,
+    default_expanded: true,
   },
   audio_tags_strip: {
     ...BASIC_CONFIG,
@@ -169,10 +396,381 @@ const codeBlock = true;
     strip_audio_tags: false,
     first_message: "[happy] Hello there! [excited] How can I help you today?",
   },
+  audio_tags_voice_strip: {
+    ...BASIC_CONFIG,
+    text_only: false,
+    transcript_enabled: true,
+    default_expanded: true,
+    terms_html: undefined,
+    strip_audio_tags: true,
+    first_message: "[happy] Hello there! [excited] How can I help you today?",
+  },
+  audio_tags_voice_style: {
+    ...BASIC_CONFIG,
+    text_only: false,
+    transcript_enabled: true,
+    default_expanded: true,
+    terms_html: undefined,
+    strip_audio_tags: false,
+    first_message: "[happy] Hello there! [excited] How can I help you today?",
+  },
+  // Speaks a reply with aligned audio, so the transcript follows playback
+  aligned_voice: {
+    ...BASIC_CONFIG,
+    transcript_enabled: true,
+    default_expanded: true,
+    terms_html: undefined,
+  },
+  voice_markdown: {
+    ...BASIC_CONFIG,
+    text_only: false,
+    transcript_enabled: true,
+    default_expanded: true,
+    terms_html: undefined,
+    strip_audio_tags: false,
+    markdown_link_allowed_hosts: [{ hostname: "*" }],
+    first_message:
+      "This is **bold** voice text with a [link](https://example.com) and [happy] an audio tag, but `[sad]` stays literal in code.",
+  },
+  voice_markdown_blocked_link: {
+    ...BASIC_CONFIG,
+    text_only: false,
+    transcript_enabled: true,
+    default_expanded: true,
+    terms_html: undefined,
+    strip_audio_tags: false,
+    markdown_link_allowed_hosts: [{ hostname: "example.com" }],
+    first_message: "[happy] See [Evil link](https://evil.com/blocked) for details.",
+  },
+  voice_chat_stream: {
+    ...BASIC_CONFIG,
+    text_only: false,
+    transcript_enabled: true,
+    default_expanded: true,
+    terms_html: undefined,
+    first_message: "Hello there!",
+  },
+  file_upload: {
+    ...BASIC_CONFIG,
+    text_only: true,
+    transcript_enabled: true,
+    text_input_enabled: true,
+    file_input_config: {
+      enabled: true,
+      max_files_per_conversation: 2,
+    },
+    terms_html: undefined,
+    default_expanded: true,
+    first_message: "",
+  },
+  no_file_upload: {
+    ...BASIC_CONFIG,
+    text_only: true,
+    transcript_enabled: true,
+    text_input_enabled: true,
+    file_input_config: {
+      enabled: false,
+    },
+    terms_html: undefined,
+    default_expanded: true,
+    first_message: "",
+  },
+  // Text chat that stays connected until the user ends it.
+  text_only_persistent: {
+    ...BASIC_CONFIG,
+    text_only: true,
+    transcript_enabled: true,
+    text_input_enabled: true,
+    terms_html: undefined,
+    default_expanded: true,
+    first_message: "",
+  },
+  external_agent: {
+    ...BASIC_CONFIG,
+    text_only: true,
+    transcript_enabled: true,
+    text_input_enabled: true,
+    terms_html: undefined,
+    default_expanded: true,
+    first_message: "",
+  },
+  persistent_session: PERSISTENT_SESSION_AGENT,
+  // Same config as persistent_session; the socket handler refuses by agent id.
+  persistent_session_disabled: PERSISTENT_SESSION_AGENT,
+  persistent_session_voice: {
+    ...PERSISTENT_SESSION_AGENT,
+    text_only: false,
+    supports_text_only: true,
+  },
+  // No terms_key, so acceptance only lives in memory and a reload would ask
+  // again.
+  persistent_session_terms: {
+    ...PERSISTENT_SESSION_AGENT,
+    terms_html: "Test terms",
+  },
+  agent_attachments: TEXT_CHAT_CONFIG,
+  product_carousel: TEXT_CHAT_CONFIG,
+  product_cards: TEXT_CHAT_CONFIG,
+  text_and_voice: {
+    ...BASIC_CONFIG,
+    text_only: false,
+    supports_text_only: true,
+    transcript_enabled: true,
+    text_input_enabled: true,
+    terms_html: undefined,
+    default_expanded: true,
+    first_message: "Welcome message",
+  },
+  mode_toggle: {
+    ...BASIC_CONFIG,
+    transcript_enabled: true,
+    text_input_enabled: true,
+    terms_html: undefined,
+    conversation_mode_toggle_enabled: true,
+  },
+  text_and_voice_rich_content: {
+    ...BASIC_CONFIG,
+    text_only: false,
+    supports_text_only: true,
+    transcript_enabled: true,
+    text_input_enabled: true,
+    terms_html: undefined,
+    default_expanded: true,
+    first_message: "Welcome message",
+    first_message_rich_content: {
+      component: "buttons",
+      props: {
+        buttons: [{ type: "message", label: "Track my order", message: "Track" }],
+      },
+    },
+  },
+  voice_rich_content: {
+    ...BASIC_CONFIG,
+    supports_text_only: false,
+    transcript_enabled: true,
+    terms_html: undefined,
+    default_expanded: true,
+    first_message: "Welcome message",
+    first_message_rich_content: {
+      component: "buttons",
+      props: {
+        buttons: [{ type: "message", label: "Track my order", message: "Track" }],
+      },
+    },
+  },
+  text_and_voice_audio_tags: {
+    ...BASIC_CONFIG,
+    text_only: false,
+    supports_text_only: true,
+    transcript_enabled: true,
+    text_input_enabled: true,
+    strip_audio_tags: true,
+    terms_html: undefined,
+    default_expanded: true,
+    first_message: "[happy] Hello there! [excited] How can I help you today?",
+  },
+  navigation_resume: {
+    ...BASIC_CONFIG,
+    transcript_enabled: true,
+    mic_muting_enabled: true,
+    terms_html: undefined,
+    first_message: "",
+  },
+  navigation_resume_voice_only: {
+    ...BASIC_CONFIG,
+    terms_html: undefined,
+    first_message: "",
+  },
+  navigation_resume_rich_content: {
+    ...BASIC_CONFIG,
+    transcript_enabled: true,
+    terms_html: undefined,
+    first_message: "",
+  },
+  // Greets on a fresh call and replies to typed messages.
+  navigation_resume_greeting: {
+    ...BASIC_CONFIG,
+    transcript_enabled: true,
+    text_input_enabled: true,
+    terms_html: undefined,
+    first_message: "Welcome to the shop",
+  },
+  // Greets, but refuses an override of its first message.
+  navigation_resume_no_override: {
+    ...BASIC_CONFIG,
+    transcript_enabled: true,
+    terms_html: undefined,
+    first_message: "Welcome to the shop",
+  },
+  navigation_resume_text: {
+    ...BASIC_CONFIG,
+    text_only: true,
+    transcript_enabled: true,
+    text_input_enabled: true,
+    terms_html: undefined,
+    default_expanded: true,
+    first_message: "",
+  },
 } as const satisfies Record<string, WidgetConfig>;
+
+type PersistentConversation = {
+  conversationId: string;
+  rows: {
+    role: "user" | "agent";
+    text: string;
+    rich_content?: {
+      rich_content_id: string;
+      component: string;
+      props: object;
+    };
+  }[];
+};
+// Keyed by resume token; every connection mints a new one.
+const persistentConversations = new Map<string, PersistentConversation>();
+
+const contextualUpdates: string[] = [];
+
+let sendProducts: (() => void) | null = null;
+
+/** Sends the pending `product_carousel` products, so tests set up first. */
+export function releaseProducts() {
+  sendProducts?.();
+  sendProducts = null;
+}
+
+export function receivedContextualUpdates() {
+  return [...contextualUpdates];
+}
+
+// Each connection replies differently, so tests can tell them apart.
+let navigationResumeConnections = 0;
+
+const NAVIGATION_RESUME_REPLIES = [
+  "Looking at womens boots",
+  "Here are the mens casual shoes",
+  "Still here",
+];
+
+export function resetNavigationResumeMock() {
+  navigationResumeConnections = 0;
+  contextualUpdates.length = 0;
+}
+
+export function persistentConversationIdFor(token: string | null) {
+  return token ? persistentConversations.get(token)?.conversationId : undefined;
+}
 
 function isValidAgentId(agentId: string): agentId is keyof typeof AGENTS {
   return agentId in AGENTS;
+}
+
+function silentAudio(durationMs: number) {
+  return btoa(String.fromCharCode(...new Uint8Array(durationMs * 32)));
+}
+
+function sendAlignedAudio(
+  client: { send(data: string): void },
+  eventId: number,
+  text: string,
+  durationMs: number
+) {
+  const chars = [...text];
+  client.send(
+    JSON.stringify({
+      type: "audio",
+      audio_event: {
+        audio_base_64: silentAudio(durationMs),
+        event_id: eventId,
+        alignment: {
+          chars,
+          char_start_times_ms: chars.map((_, index) => index * 10),
+          char_durations_ms: chars.map(() => 10),
+        },
+      },
+    })
+  );
+}
+
+function sendAlignedAgentTurn(client: { send(data: string): void }) {
+  const eventId = 4;
+  sendAlignedAudio(client, eventId, "Sure, ", 1500);
+  client.send(
+    JSON.stringify({
+      type: "agent_response",
+      agent_response_event: {
+        agent_response: "Sure, booking it now.",
+        event_id: eventId,
+        response_id: "aligned-response",
+      },
+    })
+  );
+  sendAlignedAudio(client, eventId, "booking it now.", 500);
+}
+
+async function sendStreamedAgentResponse(
+  client: { send(data: string): void },
+  message: string,
+  eventId: number,
+  responseId: string,
+  includeFinalResponse = true
+) {
+  client.send(
+    JSON.stringify({
+      type: "agent_chat_response_part",
+      text_response_part: {
+        text: "",
+        type: "start",
+        event_id: eventId,
+        response_id: responseId,
+      },
+    })
+  );
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  client.send(
+    JSON.stringify({
+      type: "agent_chat_response_part",
+      text_response_part: {
+        text: message,
+        type: "delta",
+        event_id: eventId,
+        response_id: responseId,
+      },
+    })
+  );
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  if (includeFinalResponse) {
+    client.send(
+      JSON.stringify({
+        type: "agent_response",
+        agent_response_event: {
+          agent_response: message,
+          event_id: eventId,
+          response_id: responseId,
+        },
+      })
+    );
+    await new Promise((resolve) => setTimeout(resolve, 0));
+  }
+  client.send(
+    JSON.stringify({
+      type: "agent_chat_response_part",
+      text_response_part: {
+        text: "",
+        type: "stop",
+        event_id: eventId,
+        response_id: responseId,
+      },
+    })
+  );
+}
+
+const ATTACHMENT_HOST = "https://files.convai.test";
+
+function attachmentImage(label: string) {
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="320" height="200" viewBox="0 0 320 200">
+  <rect width="320" height="200" fill="#1f2937"/>
+  <text x="160" y="108" fill="#f9fafb" font-family="sans-serif" font-size="28" text-anchor="middle">${label}</text>
+</svg>`;
 }
 
 export const Worker = setupWorker(
@@ -195,6 +793,17 @@ export const Worker = setupWorker(
       });
     }
   ),
+  http.get(`${ATTACHMENT_HOST}/:fileName`, ({ params }) => {
+    const fileName = String(params.fileName);
+    if (!fileName.endsWith(".svg")) {
+      return new HttpResponse("mock file", {
+        headers: { "Content-Type": "application/octet-stream" },
+      });
+    }
+    return new HttpResponse(attachmentImage(fileName.replace(".svg", "")), {
+      headers: { "Content-Type": "image/svg+xml" },
+    });
+  }),
   http.get<{ agentId: string }>(
     `${import.meta.env.VITE_SERVER_URL_US || "https://api.elevenlabs.io"}/v1/convai/agents/:agentId/widget`,
     ({ params }) => {
@@ -208,6 +817,21 @@ export const Worker = setupWorker(
       return HttpResponse.error();
     }
   ),
+  http.post(
+    `${import.meta.env.VITE_SERVER_URL_US || "https://api.elevenlabs.io"}/v1/convai/conversations/:conversationId/files`,
+    async ({ request }) => {
+      const form = await request.formData();
+      const file = form.get("file");
+      if (!(file instanceof File)) {
+        return HttpResponse.json({ detail: "no file" }, { status: 400 });
+      }
+      return HttpResponse.json({ file_id: `file_${file.name}` });
+    }
+  ),
+  http.delete(
+    `${import.meta.env.VITE_SERVER_URL_US || "https://api.elevenlabs.io"}/v1/convai/conversations/:conversationId/files/:fileId`,
+    () => new HttpResponse(null, { status: 204 })
+  ),
   ws
     .link(
       `${import.meta.env.VITE_WEBSOCKET_URL_US || "wss://api.elevenlabs.io"}/v1/convai/conversation`
@@ -216,39 +840,250 @@ export const Worker = setupWorker(
       const agentId = client.url.searchParams.get("agent_id") as keyof typeof AGENTS;
       const config = AGENTS[agentId];
       const conversationId = Math.random().toString(36).substring(7);
+
+      // An empty override means the agent waits instead of greeting.
+      let overriddenFirstMessage: string | undefined;
+
+      client.addEventListener("message", (event) => {
+        const data = typeof event.data === "string" ? JSON.parse(event.data) : null;
+        if (data?.type === "contextual_update") {
+          contextualUpdates.push(data.text);
+        }
+        if (data?.type === "conversation_initiation_client_data") {
+          overriddenFirstMessage = data.conversation_config_override?.agent?.first_message;
+          // Like xi, refused after the metadata has already gone out.
+          if (agentId === "navigation_resume_no_override" && overriddenFirstMessage === "") {
+            client.close(1008, "Override for field 'first_message' is not allowed by config.");
+          }
+        }
+      });
+
+      if (
+        agentId === "persistent_session_disabled" &&
+        client.url.searchParams.get("is_persistent") === "true"
+      ) {
+        client.close(3000, "Persistent sessions are not enabled for this workspace.");
+        return;
+      }
+      const resumeToken = client.url.searchParams.get("persistent_session_token");
+      const resumedConversation = resumeToken
+        ? persistentConversations.get(resumeToken)
+        : undefined;
+      if (resumeToken && !resumedConversation) {
+        // Held like the handshake below, so a test can type during the resume.
+        await new Promise((resolve) => setTimeout(resolve, 300));
+        client.close(3000, "Invalid or expired persistent session token.");
+        return;
+      }
+      const persistentConversation =
+        client.url.searchParams.get("is_persistent") === "true"
+          ? (resumedConversation ?? { conversationId, rows: [] })
+          : undefined;
+      const persistentSessionToken = persistentConversation
+        ? `persistent-token-${persistentConversations.size + 1}`
+        : undefined;
+      if (persistentConversation && persistentSessionToken) {
+        persistentConversations.set(persistentSessionToken, persistentConversation);
+      }
+
+      if (resumedConversation) {
+        // Holds the handshake long enough for a test to type during a resume.
+        await new Promise((resolve) => setTimeout(resolve, 300));
+      }
       client.send(
         JSON.stringify({
           type: "conversation_initiation_metadata",
           conversation_initiation_metadata_event: {
-            conversation_id: conversationId,
+            conversation_id: persistentConversation?.conversationId ?? conversationId,
             agent_output_audio_format: "pcm_16000",
             user_input_audio_format: "pcm_16000",
+            persistent_session_token: persistentSessionToken,
           },
         })
       );
+      // The widget sends a typed message 100ms after the handshake, so reply
+      // listeners go on before the awaited setup below can push past that.
+      if (
+        agentId === "streamed_first_reply" ||
+        agentId === "streamed_first_message" ||
+        agentId === "streamed_first_message_with_final"
+      ) {
+        let hasReplied = false;
+        client.addEventListener("message", async (event) => {
+          const data = typeof event.data === "string" ? JSON.parse(event.data) : null;
+          if (data?.type !== "user_message" || hasReplied) return;
+          hasReplied = true;
+          const message =
+            agentId === "streamed_first_reply"
+              ? "First streamed reply"
+              : agentId === "streamed_first_message"
+                ? (config.first_message ?? "")
+                : "Production streamed reply";
+
+          await sendStreamedAgentResponse(client, message, 2, "streamed-reply");
+        });
+      }
+      if (
+        agentId === "persistent_session" ||
+        agentId === "persistent_session_disabled" ||
+        agentId === "persistent_session_voice" ||
+        agentId === "persistent_session_terms"
+      ) {
+        const rows = persistentConversation?.rows;
+        // Event ids restart on every segment, like the backend does today, so
+        // the first reply after a resume carries the first-message event id.
+        let eventId = resumedConversation ? 1 : 2;
+        client.addEventListener("message", (event) => {
+          const data = typeof event.data === "string" ? JSON.parse(event.data) : null;
+          if (data?.type !== "user_message") return;
+          if (data.text === "drop the connection") {
+            // Abnormal closure, as when a backgrounded WebView loses its socket.
+            client.close(1006);
+            return;
+          }
+          if (data.text === "show me buttons") {
+            const richContent = {
+              rich_content_id: "rc_replay",
+              component: "buttons",
+              props: {
+                buttons: [{ type: "message", label: "Track it", message: "Track it" }],
+              },
+            };
+            rows?.push(
+              { role: "user", text: data.text },
+              { role: "agent", text: "Pick one" },
+              { role: "agent", text: "", rich_content: richContent }
+            );
+            client.send(
+              JSON.stringify({
+                type: "agent_response",
+                agent_response_event: {
+                  agent_response: "Pick one",
+                  event_id: eventId,
+                  response_id: `reply-${eventId}`,
+                },
+              })
+            );
+            client.send(
+              JSON.stringify({
+                type: "rich_content",
+                rich_content: { ...richContent, event_id: eventId },
+              })
+            );
+            eventId++;
+            return;
+          }
+          const reply = `You said: ${data.text}`;
+          rows?.push({ role: "user", text: data.text }, { role: "agent", text: reply });
+          client.send(
+            JSON.stringify({
+              type: "agent_response",
+              agent_response_event: {
+                agent_response: reply,
+                event_id: eventId,
+                response_id: `reply-${eventId}`,
+              },
+            })
+          );
+          eventId++;
+        });
+      }
       await new Promise((resolve) => setTimeout(resolve, 0));
-      client.send(
-        JSON.stringify({
-          type: "agent_response",
-          agent_response_event: {
-            agent_response: config.first_message,
-            event_id: 1,
-          },
-        })
-      );
-      if (config.text_only && agentId !== "end_call_test" && agentId !== "tool_call") {
+      if (resumedConversation) {
+        client.send(
+          JSON.stringify({
+            type: "conversation_history",
+            conversation_history_event: {
+              conversation_id: resumedConversation.conversationId,
+              rows: resumedConversation.rows.map((row, index) => ({
+                index,
+                ...row,
+                timestamp_unix_secs: 1_700_000_000 + index,
+              })),
+              truncated: false,
+            },
+          })
+        );
+      }
+      if (agentId === "streamed_first_message" || agentId === "streamed_first_message_with_final") {
+        await sendStreamedAgentResponse(
+          client,
+          config.first_message ?? "",
+          1,
+          "first-message",
+          agentId === "streamed_first_message_with_final"
+        );
+      } else if (
+        agentId !== "streamed_first_reply" &&
+        !resumedConversation &&
+        overriddenFirstMessage !== ""
+      ) {
+        persistentConversation?.rows.push({
+          role: "agent",
+          text: config.first_message ?? "",
+        });
         client.send(
           JSON.stringify({
             type: "agent_response",
             agent_response_event: {
-              agent_response: "Another agent response",
+              agent_response: config.first_message,
+              event_id: 1,
+              response_id: "first-message",
+            },
+          })
+        );
+      }
+      // `text_and_voice` is a voice-capable agent that the widget switches to
+      // text mode when the user types, so it follows the text chat script.
+      const isTextChat =
+        config.text_only || agentId === "text_and_voice" || agentId === "persistent_session_voice";
+      if (
+        isTextChat &&
+        agentId !== "end_call_test" &&
+        agentId !== "tool_call" &&
+        agentId !== "tool_call_late_final" &&
+        agentId !== "final_message_after_tool" &&
+        agentId !== "response_before_stream_tool" &&
+        agentId !== "tool_call_response_resend" &&
+        agentId !== "same_text_distinct_responses" &&
+        agentId !== "empty_tool_segment_before_reply" &&
+        agentId !== "messages_around_tool_call" &&
+        agentId !== "empty_tool_segment_between_messages" &&
+        agentId !== "refined_final_after_tool_segment" &&
+        agentId !== "stream_consolidation" &&
+        agentId !== "streamed_first_reply" &&
+        agentId !== "streamed_first_message" &&
+        agentId !== "streamed_first_message_with_final" &&
+        agentId !== "file_upload" &&
+        agentId !== "no_file_upload" &&
+        agentId !== "text_only_persistent" &&
+        agentId !== "external_agent" &&
+        agentId !== "persistent_session" &&
+        agentId !== "persistent_session_disabled" &&
+        agentId !== "persistent_session_voice" &&
+        agentId !== "persistent_session_terms" &&
+        agentId !== "agent_attachments" &&
+        agentId !== "product_carousel" &&
+        agentId !== "product_cards" &&
+        agentId !== "navigation_resume_text"
+      ) {
+        const agentResponse =
+          agentId === "markdown_agent_response"
+            ? "Read the [setup guide](https://example.com/setup)."
+            : "Another agent response";
+        client.send(
+          JSON.stringify({
+            type: "agent_response",
+            agent_response_event: {
+              agent_response: agentResponse,
               event_id: 2,
+              response_id: "default-response",
             },
           })
         );
         await new Promise((resolve) => setTimeout(resolve, 1000));
         client.close();
-      } else if (!config.text_only) {
+      } else if (!isTextChat && agentId !== "voice_rich_content") {
         client.send(
           JSON.stringify({
             type: "user_transcript",
@@ -259,10 +1094,172 @@ export const Worker = setupWorker(
           })
         );
       }
+      if (agentId === "aligned_voice") {
+        sendAlignedAgentTurn(client);
+      }
+      if (
+        agentId === "navigation_resume" ||
+        agentId === "navigation_resume_text" ||
+        agentId === "navigation_resume_voice_only"
+      ) {
+        const connection = navigationResumeConnections++;
+        client.send(
+          JSON.stringify({
+            type: "agent_response",
+            agent_response_event: {
+              agent_response: NAVIGATION_RESUME_REPLIES[connection] ?? "Still here",
+              event_id: 1,
+              response_id: `navigation-resume-${connection}`,
+            },
+          })
+        );
+      }
+      if (agentId === "navigation_resume_rich_content") {
+        const connection = navigationResumeConnections++;
+        client.send(
+          JSON.stringify({
+            type: "agent_response",
+            agent_response_event: {
+              agent_response: connection === 0 ? "Here are my picks" : "Picking up again",
+              event_id: 1,
+              response_id: `rich-navigation-resume-${connection}`,
+            },
+          })
+        );
+        if (connection === 0) {
+          client.send(
+            JSON.stringify({
+              type: "rich_content",
+              rich_content: {
+                rich_content_id: "rc_picks",
+                component: "carousel",
+                props: {
+                  items: [
+                    {
+                      title: "Albany",
+                      subtitle: "mens casual",
+                      description: "$139.95",
+                    },
+                  ],
+                },
+                event_id: 1,
+              },
+            })
+          );
+          client.send(
+            JSON.stringify({
+              type: "rich_content",
+              rich_content: {
+                rich_content_id: "rc_replies",
+                component: "buttons",
+                props: {
+                  buttons: [
+                    {
+                      type: "message",
+                      label: "Tell me more",
+                      message: "Tell me more",
+                    },
+                  ],
+                },
+                event_id: 1,
+              },
+            })
+          );
+        }
+      }
+      if (agentId === "navigation_resume_greeting") {
+        client.addEventListener("message", (event) => {
+          const data = typeof event.data === "string" ? JSON.parse(event.data) : null;
+          if (data?.type !== "user_message") return;
+          client.send(
+            JSON.stringify({
+              type: "agent_response",
+              agent_response_event: {
+                agent_response: "Those come in black too",
+                event_id: 1,
+                response_id: "typed-reply",
+              },
+            })
+          );
+        });
+      }
       if (agentId === "fail") {
         client.addEventListener("message", () => {
           client.close(3000, "Test reason");
         });
+      }
+      if (
+        agentId === "queued" ||
+        agentId === "queued_overlay" ||
+        agentId === "queue_admit" ||
+        agentId === "queue_timeout"
+      ) {
+        client.send(
+          JSON.stringify({
+            type: "queue_status",
+            queue_status_event: { status: "waiting" },
+          })
+        );
+      }
+      if (agentId === "queued") {
+        // A typing indicator arriving while queued must stay hidden.
+        client.send(JSON.stringify({ type: "external_agent_connected" }));
+        client.send(
+          JSON.stringify({
+            type: "agent_typing",
+            agent_typing_event: { is_typing: true },
+          })
+        );
+        // Rich-content buttons arriving while queued must render disabled.
+        client.send(
+          JSON.stringify({
+            type: "rich_content",
+            rich_content: {
+              rich_content_id: "rc_queued",
+              component: "buttons",
+              props: {
+                buttons: [
+                  {
+                    type: "message",
+                    label: "Quick reply",
+                    message: "Quick reply",
+                  },
+                ],
+              },
+              event_id: 2,
+            },
+          })
+        );
+      }
+      if (agentId === "queue_admit") {
+        await new Promise((resolve) => setTimeout(resolve, 1500));
+        client.send(
+          JSON.stringify({
+            type: "queue_status",
+            queue_status_event: { status: "admitted" },
+          })
+        );
+        client.send(
+          JSON.stringify({
+            type: "agent_response",
+            agent_response_event: {
+              agent_response: "Queue cleared response",
+              event_id: 4,
+              response_id: "queue-response",
+            },
+          })
+        );
+      }
+      if (agentId === "queue_timeout") {
+        await new Promise((resolve) => setTimeout(resolve, 1000));
+        client.send(
+          JSON.stringify({
+            type: "queue_status",
+            queue_status_event: { status: "timed_out" },
+          })
+        );
+        await new Promise((resolve) => setTimeout(resolve, 400));
+        client.close(3008, "too many concurrent connections");
       }
       if (agentId === "end_call_test") {
         client.addEventListener("message", async () => {
@@ -273,6 +1270,7 @@ export const Worker = setupWorker(
                 text: "",
                 type: "start",
                 event_id: 10,
+                response_id: "end-call",
               },
             })
           );
@@ -283,6 +1281,7 @@ export const Worker = setupWorker(
               agent_response_event: {
                 agent_response: "Goodbye! Have a great day!",
                 event_id: 10,
+                response_id: "end-call",
               },
             })
           );
@@ -294,11 +1293,720 @@ export const Worker = setupWorker(
                 text: "",
                 type: "stop",
                 event_id: 10,
+                response_id: "end-call",
               },
             })
           );
           await new Promise((resolve) => setTimeout(resolve, 50));
           client.close(1000);
+        });
+      }
+      if (agentId === "final_message_after_tool") {
+        let hasReplied = false;
+        client.addEventListener("message", async (event) => {
+          const data = typeof event.data === "string" ? JSON.parse(event.data) : null;
+          if (data?.type !== "user_message" || hasReplied) return;
+          hasReplied = true;
+
+          client.send(
+            JSON.stringify({
+              type: "agent_chat_response_part",
+              text_response_part: {
+                text: "",
+                type: "start",
+                event_id: 2,
+                response_id: "feedback-tool",
+              },
+            })
+          );
+          client.send(
+            JSON.stringify({
+              type: "agent_tool_request",
+              agent_tool_request: {
+                tool_call_id: "feedback_1",
+                event_id: 2,
+                tool_name: "capture_feedback",
+              },
+            })
+          );
+          await new Promise((resolve) => setTimeout(resolve, 0));
+          client.send(
+            JSON.stringify({
+              type: "agent_tool_response",
+              agent_tool_response: {
+                tool_call_id: "feedback_1",
+                event_id: 2,
+                is_error: false,
+              },
+            })
+          );
+          client.send(
+            JSON.stringify({
+              type: "agent_chat_response_part",
+              text_response_part: {
+                text: "",
+                type: "stop",
+                event_id: 2,
+                response_id: "feedback-tool",
+              },
+            })
+          );
+          await new Promise((resolve) => setTimeout(resolve, 0));
+          client.send(
+            JSON.stringify({
+              type: "agent_response",
+              agent_response_event: {
+                agent_response: "Thank you for your feedback. Have a great day!",
+                event_id: 2,
+                response_id: "feedback-final",
+              },
+            })
+          );
+          await new Promise((resolve) => setTimeout(resolve, 100));
+          client.close(1000);
+        });
+      }
+      if (agentId === "refined_final_after_tool_segment") {
+        let hasReplied = false;
+        client.addEventListener("message", async (event) => {
+          const data = typeof event.data === "string" ? JSON.parse(event.data) : null;
+          if (data?.type !== "user_message" || hasReplied) return;
+          hasReplied = true;
+
+          client.send(
+            JSON.stringify({
+              type: "agent_chat_response_part",
+              text_response_part: {
+                text: "",
+                type: "start",
+                event_id: 2,
+                response_id: "availability-tool",
+              },
+            })
+          );
+          client.send(
+            JSON.stringify({
+              type: "agent_tool_request",
+              agent_tool_request: {
+                tool_call_id: "availability_2",
+                event_id: 2,
+                tool_name: "check_availability",
+              },
+            })
+          );
+          client.send(
+            JSON.stringify({
+              type: "agent_chat_response_part",
+              text_response_part: {
+                text: "",
+                type: "stop",
+                event_id: 2,
+                response_id: "availability-tool",
+              },
+            })
+          );
+          await new Promise((resolve) => setTimeout(resolve, 50));
+          client.send(
+            JSON.stringify({
+              type: "agent_tool_response",
+              agent_tool_response: {
+                tool_call_id: "availability_2",
+                event_id: 2,
+                is_error: false,
+              },
+            })
+          );
+          client.send(
+            JSON.stringify({
+              type: "agent_chat_response_part",
+              text_response_part: {
+                text: "",
+                type: "start",
+                event_id: 2,
+                response_id: "availability-reply",
+              },
+            })
+          );
+          client.send(
+            JSON.stringify({
+              type: "agent_chat_response_part",
+              text_response_part: {
+                text: "Tomorrow at 10am",
+                type: "delta",
+                event_id: 2,
+                response_id: "availability-reply",
+              },
+            })
+          );
+          await new Promise((resolve) => setTimeout(resolve, 0));
+          client.send(
+            JSON.stringify({
+              type: "agent_response",
+              agent_response_event: {
+                agent_response: "Tomorrow at 10am is available.",
+                event_id: 2,
+                response_id: "availability-reply",
+              },
+            })
+          );
+          client.send(
+            JSON.stringify({
+              type: "agent_chat_response_part",
+              text_response_part: {
+                text: "",
+                type: "stop",
+                event_id: 2,
+                response_id: "availability-reply",
+              },
+            })
+          );
+        });
+      }
+      if (agentId === "empty_tool_segment_between_messages") {
+        let hasReplied = false;
+        client.addEventListener("message", async (event) => {
+          const data = typeof event.data === "string" ? JSON.parse(event.data) : null;
+          if (data?.type !== "user_message" || hasReplied) return;
+          hasReplied = true;
+
+          const sendPart = (responseId: string, text: string, type: "start" | "delta" | "stop") => {
+            client.send(
+              JSON.stringify({
+                type: "agent_chat_response_part",
+                text_response_part: {
+                  text,
+                  type,
+                  event_id: 2,
+                  response_id: responseId,
+                },
+              })
+            );
+          };
+          const sendResponse = (responseId: string, agent_response: string) => {
+            client.send(
+              JSON.stringify({
+                type: "agent_response",
+                agent_response_event: {
+                  agent_response,
+                  event_id: 2,
+                  response_id: responseId,
+                },
+              })
+            );
+          };
+
+          sendPart("complaint-preamble", "", "start");
+          sendPart("complaint-preamble", "Logging your complaint now…", "delta");
+          sendPart("complaint-preamble", "", "stop");
+          await new Promise((resolve) => setTimeout(resolve, 0));
+
+          sendPart("complaint-tool", "", "start");
+          client.send(
+            JSON.stringify({
+              type: "agent_tool_request",
+              agent_tool_request: {
+                tool_call_id: "complaint_1",
+                event_id: 2,
+                tool_name: "log_complaint",
+              },
+            })
+          );
+          sendPart("complaint-tool", "", "stop");
+          await new Promise((resolve) => setTimeout(resolve, 50));
+          client.send(
+            JSON.stringify({
+              type: "agent_tool_response",
+              agent_tool_response: {
+                tool_call_id: "complaint_1",
+                event_id: 2,
+                is_error: false,
+              },
+            })
+          );
+
+          sendPart("complaint-reply", "", "start");
+          sendPart("complaint-reply", "Is there anything else I can help you with today?", "delta");
+          sendPart("complaint-reply", "", "stop");
+          await new Promise((resolve) => setTimeout(resolve, 0));
+
+          sendResponse("complaint-preamble", "Logging your complaint now…");
+          sendResponse("complaint-reply", "Is there anything else I can help you with today?");
+        });
+      }
+      if (agentId === "messages_around_tool_call") {
+        let hasReplied = false;
+        client.addEventListener("message", async (event) => {
+          const data = typeof event.data === "string" ? JSON.parse(event.data) : null;
+          if (data?.type !== "user_message" || hasReplied) return;
+          hasReplied = true;
+
+          client.send(
+            JSON.stringify({
+              type: "agent_chat_response_part",
+              text_response_part: {
+                text: "",
+                type: "start",
+                event_id: 2,
+                response_id: "availability-preamble",
+              },
+            })
+          );
+          client.send(
+            JSON.stringify({
+              type: "agent_chat_response_part",
+              text_response_part: {
+                text: "Let me check that for you.",
+                type: "delta",
+                event_id: 2,
+                response_id: "availability-preamble",
+              },
+            })
+          );
+          client.send(
+            JSON.stringify({
+              type: "agent_tool_request",
+              agent_tool_request: {
+                tool_call_id: "availability_1",
+                event_id: 2,
+                tool_name: "check_availability",
+              },
+            })
+          );
+          client.send(
+            JSON.stringify({
+              type: "agent_chat_response_part",
+              text_response_part: {
+                text: "",
+                type: "stop",
+                event_id: 2,
+                response_id: "availability-preamble",
+              },
+            })
+          );
+          await new Promise((resolve) => setTimeout(resolve, 50));
+          client.send(
+            JSON.stringify({
+              type: "agent_tool_response",
+              agent_tool_response: {
+                tool_call_id: "availability_1",
+                event_id: 2,
+                is_error: false,
+              },
+            })
+          );
+          client.send(
+            JSON.stringify({
+              type: "agent_chat_response_part",
+              text_response_part: {
+                text: "",
+                type: "start",
+                event_id: 2,
+                response_id: "availability-reply",
+              },
+            })
+          );
+          client.send(
+            JSON.stringify({
+              type: "agent_chat_response_part",
+              text_response_part: {
+                text: "Tomorrow at 10am is available.",
+                type: "delta",
+                event_id: 2,
+                response_id: "availability-reply",
+              },
+            })
+          );
+          client.send(
+            JSON.stringify({
+              type: "agent_chat_response_part",
+              text_response_part: {
+                text: "",
+                type: "stop",
+                event_id: 2,
+                response_id: "availability-reply",
+              },
+            })
+          );
+          await new Promise((resolve) => setTimeout(resolve, 0));
+          client.send(
+            JSON.stringify({
+              type: "agent_response",
+              agent_response_event: {
+                agent_response: "Let me check that for you.",
+                event_id: 2,
+                response_id: "availability-preamble",
+              },
+            })
+          );
+          client.send(
+            JSON.stringify({
+              type: "agent_response",
+              agent_response_event: {
+                agent_response: "Tomorrow at 10am is available.",
+                event_id: 2,
+                response_id: "availability-reply",
+              },
+            })
+          );
+        });
+      }
+      if (agentId === "empty_tool_segment_before_reply") {
+        let hasReplied = false;
+        client.addEventListener("message", async (event) => {
+          const data = typeof event.data === "string" ? JSON.parse(event.data) : null;
+          if (data?.type !== "user_message" || hasReplied) return;
+          hasReplied = true;
+
+          client.send(
+            JSON.stringify({
+              type: "agent_chat_response_part",
+              text_response_part: {
+                text: "",
+                type: "start",
+                event_id: 2,
+              },
+            })
+          );
+          client.send(
+            JSON.stringify({
+              type: "agent_tool_request",
+              agent_tool_request: {
+                tool_call_id: "complaint_log_1",
+                event_id: 2,
+                tool_name: "check_availability",
+              },
+            })
+          );
+          client.send(
+            JSON.stringify({
+              type: "agent_chat_response_part",
+              text_response_part: {
+                text: "",
+                type: "stop",
+                event_id: 2,
+              },
+            })
+          );
+          await new Promise((resolve) => setTimeout(resolve, 50));
+          client.send(
+            JSON.stringify({
+              type: "agent_tool_response",
+              agent_tool_response: {
+                tool_call_id: "complaint_log_1",
+                event_id: 2,
+                is_error: false,
+              },
+            })
+          );
+          await new Promise((resolve) => setTimeout(resolve, 50));
+          client.send(
+            JSON.stringify({
+              type: "agent_chat_response_part",
+              text_response_part: {
+                text: "",
+                type: "start",
+                event_id: 2,
+              },
+            })
+          );
+          client.send(
+            JSON.stringify({
+              type: "agent_chat_response_part",
+              text_response_part: {
+                text: "Tomorrow at 10am is available.",
+                type: "delta",
+                event_id: 2,
+              },
+            })
+          );
+          client.send(
+            JSON.stringify({
+              type: "agent_chat_response_part",
+              text_response_part: {
+                text: "",
+                type: "stop",
+                event_id: 2,
+              },
+            })
+          );
+          await new Promise((resolve) => setTimeout(resolve, 0));
+          client.send(
+            JSON.stringify({
+              type: "agent_response",
+              agent_response_event: {
+                agent_response: "Tomorrow at 10am is available.",
+                event_id: 2,
+              },
+            })
+          );
+        });
+      }
+      if (agentId === "response_before_stream_tool") {
+        let hasReplied = false;
+        client.addEventListener("message", async (event) => {
+          const data = typeof event.data === "string" ? JSON.parse(event.data) : null;
+          if (data?.type !== "user_message" || hasReplied) return;
+          hasReplied = true;
+
+          client.send(
+            JSON.stringify({
+              type: "agent_response",
+              agent_response_event: {
+                agent_response: "Recording that for you now…",
+                event_id: 2,
+                response_id: "record-preamble",
+              },
+            })
+          );
+          client.send(
+            JSON.stringify({
+              type: "agent_chat_response_part",
+              text_response_part: {
+                text: "",
+                type: "start",
+                event_id: 2,
+                response_id: "record-preamble",
+              },
+            })
+          );
+          client.send(
+            JSON.stringify({
+              type: "agent_chat_response_part",
+              text_response_part: {
+                text: "Recording that for you now…",
+                type: "delta",
+                event_id: 2,
+                response_id: "record-preamble",
+              },
+            })
+          );
+          client.send(
+            JSON.stringify({
+              type: "agent_chat_response_part",
+              text_response_part: {
+                text: "",
+                type: "stop",
+                event_id: 2,
+                response_id: "record-preamble",
+              },
+            })
+          );
+          client.send(
+            JSON.stringify({
+              type: "agent_tool_request",
+              agent_tool_request: {
+                tool_call_id: "record_1",
+                event_id: 2,
+                tool_name: "capture_vulnerability",
+              },
+            })
+          );
+          await new Promise((resolve) => setTimeout(resolve, 0));
+          client.send(
+            JSON.stringify({
+              type: "agent_tool_response",
+              agent_tool_response: {
+                tool_call_id: "record_1",
+                event_id: 2,
+                is_error: false,
+              },
+            })
+          );
+          client.send(
+            JSON.stringify({
+              type: "agent_chat_response_part",
+              text_response_part: {
+                text: "",
+                type: "start",
+                event_id: 2,
+                response_id: "record-reply",
+              },
+            })
+          );
+          client.send(
+            JSON.stringify({
+              type: "agent_chat_response_part",
+              text_response_part: {
+                text: "The bug has been recorded successfully. Is there anything else you would like me to help you with?",
+                type: "delta",
+                event_id: 2,
+                response_id: "record-reply",
+              },
+            })
+          );
+          client.send(
+            JSON.stringify({
+              type: "agent_chat_response_part",
+              text_response_part: {
+                text: "",
+                type: "stop",
+                event_id: 2,
+                response_id: "record-reply",
+              },
+            })
+          );
+          client.send(
+            JSON.stringify({
+              type: "agent_response",
+              agent_response_event: {
+                agent_response:
+                  "The bug has been recorded successfully. Is there anything else you would like me to help you with?",
+                event_id: 2,
+                response_id: "record-reply",
+              },
+            })
+          );
+        });
+      }
+      if (agentId === "tool_call_response_resend") {
+        let hasReplied = false;
+        client.addEventListener("message", async (event) => {
+          const data = typeof event.data === "string" ? JSON.parse(event.data) : null;
+          if (data?.type !== "user_message" || hasReplied) return;
+          hasReplied = true;
+
+          const preToolReply =
+            "I don't have specific Wednesday hours to check against - the website is the most reliable spot to confirm that.";
+          const preToolResponseId = "pre-tool-response";
+          await sendStreamedAgentResponse(client, preToolReply, 2, preToolResponseId);
+
+          client.send(
+            JSON.stringify({
+              type: "agent_tool_request",
+              agent_tool_request: {
+                tool_call_id: "npdc_chatbot_testing_1",
+                event_id: 2,
+                tool_name: "NPDC_CHATBOT_TESTING",
+              },
+            })
+          );
+          await new Promise((resolve) => setTimeout(resolve, 0));
+          client.send(
+            JSON.stringify({
+              type: "agent_tool_response",
+              agent_tool_response: {
+                tool_call_id: "npdc_chatbot_testing_1",
+                event_id: 2,
+                is_error: false,
+              },
+            })
+          );
+          await new Promise((resolve) => setTimeout(resolve, 0));
+
+          // The pre-tool final is delivered again after the tool completes.
+          client.send(
+            JSON.stringify({
+              type: "agent_response",
+              agent_response_event: {
+                agent_response: preToolReply,
+                event_id: 2,
+                response_id: preToolResponseId,
+              },
+            })
+          );
+          await new Promise((resolve) => setTimeout(resolve, 0));
+
+          await sendStreamedAgentResponse(
+            client,
+            "I've noted that down. In the meantime, the website will have the full weekly schedule for you.",
+            2,
+            "post-tool-response"
+          );
+          await new Promise((resolve) => setTimeout(resolve, 50));
+          client.close(1000);
+        });
+      }
+      if (agentId === "same_text_distinct_responses") {
+        let hasReplied = false;
+        client.addEventListener("message", async (event) => {
+          const data = typeof event.data === "string" ? JSON.parse(event.data) : null;
+          if (data?.type !== "user_message" || hasReplied) return;
+          hasReplied = true;
+
+          const reply = "Okay.";
+          await sendStreamedAgentResponse(client, reply, 2, "response-a");
+          await sendStreamedAgentResponse(client, reply, 2, "response-b");
+        });
+      }
+      if (agentId === "tool_call_late_final") {
+        let hasReplied = false;
+        client.addEventListener("message", async (event) => {
+          const data = typeof event.data === "string" ? JSON.parse(event.data) : null;
+          if (data?.type !== "user_message" || hasReplied) return;
+          hasReplied = true;
+
+          client.send(
+            JSON.stringify({
+              type: "agent_chat_response_part",
+              text_response_part: {
+                text: "",
+                type: "start",
+                event_id: 2,
+              },
+            })
+          );
+          await new Promise((resolve) => setTimeout(resolve, 0));
+          client.send(
+            JSON.stringify({
+              type: "agent_chat_response_part",
+              text_response_part: {
+                text: "Recording that for you now…",
+                type: "delta",
+                event_id: 2,
+              },
+            })
+          );
+          client.send(
+            JSON.stringify({
+              type: "agent_chat_response_part",
+              text_response_part: {
+                text: "",
+                type: "stop",
+                event_id: 2,
+              },
+            })
+          );
+
+          client.send(
+            JSON.stringify({
+              type: "agent_chat_response_part",
+              text_response_part: {
+                text: "",
+                type: "start",
+                event_id: 3,
+              },
+            })
+          );
+          client.send(
+            JSON.stringify({
+              type: "agent_tool_request",
+              agent_tool_request: {
+                tool_call_id: "tool_late_final",
+                event_id: 3,
+                tool_name: "capture_vulnerability",
+              },
+            })
+          );
+          await new Promise((resolve) => setTimeout(resolve, 0));
+          client.send(
+            JSON.stringify({
+              type: "agent_response",
+              agent_response_event: {
+                agent_response: "Recording that for you now…",
+                event_id: 2,
+              },
+            })
+          );
+          client.send(
+            JSON.stringify({
+              type: "agent_tool_response",
+              agent_tool_response: {
+                tool_call_id: "tool_late_final",
+                event_id: 3,
+                is_error: false,
+              },
+            })
+          );
         });
       }
       if (agentId === "tool_call") {
@@ -307,7 +2015,12 @@ export const Worker = setupWorker(
           client.send(
             JSON.stringify({
               type: "agent_chat_response_part",
-              text_response_part: { text: "", type: "start", event_id: 2 },
+              text_response_part: {
+                text: "",
+                type: "start",
+                event_id: 2,
+                response_id: "tool-preamble",
+              },
             })
           );
           await new Promise((resolve) => setTimeout(resolve, 0));
@@ -317,6 +2030,7 @@ export const Worker = setupWorker(
               agent_response_event: {
                 agent_response: "Running the tool now.",
                 event_id: 2,
+                response_id: "tool-preamble",
               },
             })
           );
@@ -333,7 +2047,12 @@ export const Worker = setupWorker(
           client.send(
             JSON.stringify({
               type: "agent_chat_response_part",
-              text_response_part: { text: "", type: "stop", event_id: 2 },
+              text_response_part: {
+                text: "",
+                type: "stop",
+                event_id: 2,
+                response_id: "tool-preamble",
+              },
             })
           );
           await new Promise((resolve) => setTimeout(resolve, 100));
@@ -352,7 +2071,12 @@ export const Worker = setupWorker(
           client.send(
             JSON.stringify({
               type: "agent_chat_response_part",
-              text_response_part: { text: "", type: "start", event_id: 2 },
+              text_response_part: {
+                text: "",
+                type: "start",
+                event_id: 2,
+                response_id: "tool-reply",
+              },
             })
           );
           await new Promise((resolve) => setTimeout(resolve, 0));
@@ -363,6 +2087,7 @@ export const Worker = setupWorker(
                 text: "Tool completed successfully",
                 type: "delta",
                 event_id: 2,
+                response_id: "tool-reply",
               },
             })
           );
@@ -370,7 +2095,12 @@ export const Worker = setupWorker(
           client.send(
             JSON.stringify({
               type: "agent_chat_response_part",
-              text_response_part: { text: "", type: "stop", event_id: 2 },
+              text_response_part: {
+                text: "",
+                type: "stop",
+                event_id: 2,
+                response_id: "tool-reply",
+              },
             })
           );
           client.send(
@@ -379,7 +2109,250 @@ export const Worker = setupWorker(
               agent_response_event: {
                 agent_response: "Tool completed successfully",
                 event_id: 2,
+                response_id: "tool-reply",
               },
+            })
+          );
+        });
+      }
+      if (agentId === "stream_consolidation") {
+        let hasStreamed = false;
+        client.addEventListener("message", async (event) => {
+          const data = typeof event.data === "string" ? JSON.parse(event.data) : null;
+          if (data?.type !== "user_message" || hasStreamed) return;
+          hasStreamed = true;
+          // Stream a partial, then deliver the final text as an agent_response
+          // for the same event_id (before stop) so it overwrites in place.
+          client.send(
+            JSON.stringify({
+              type: "agent_chat_response_part",
+              text_response_part: {
+                text: "",
+                type: "start",
+                event_id: 2,
+                response_id: "stream-consolidation",
+              },
+            })
+          );
+          await new Promise((resolve) => setTimeout(resolve, 0));
+          client.send(
+            JSON.stringify({
+              type: "agent_chat_response_part",
+              text_response_part: {
+                text: "partial",
+                type: "delta",
+                event_id: 2,
+                response_id: "stream-consolidation",
+              },
+            })
+          );
+          await new Promise((resolve) => setTimeout(resolve, 0));
+          client.send(
+            JSON.stringify({
+              type: "agent_response",
+              agent_response_event: {
+                agent_response: "full",
+                event_id: 2,
+                response_id: "stream-consolidation",
+              },
+            })
+          );
+          await new Promise((resolve) => setTimeout(resolve, 0));
+          client.send(
+            JSON.stringify({
+              type: "agent_chat_response_part",
+              text_response_part: {
+                text: "",
+                type: "stop",
+                event_id: 2,
+                response_id: "stream-consolidation",
+              },
+            })
+          );
+        });
+      }
+      if (agentId === "voice_chat_stream") {
+        // Chat parts with no `agent_response`, so nothing was ever spoken.
+        await sendStreamedAgentResponse(
+          client,
+          "This draft was never spoken.",
+          2,
+          "voice-draft",
+          false
+        );
+        client.send(
+          JSON.stringify({
+            type: "agent_response",
+            agent_response_event: {
+              agent_response: "How can I help you today?",
+              event_id: 4,
+              response_id: "voice-final",
+            },
+          })
+        );
+      }
+      if (agentId === "product_carousel") {
+        client.addEventListener("message", (event) => {
+          const data = typeof event.data === "string" ? JSON.parse(event.data) : null;
+          if (data?.type !== "user_message") return;
+          sendProducts = () =>
+            client.send(
+              JSON.stringify({
+                type: "rich_content",
+                rich_content: {
+                  rich_content_id: "rc_products",
+                  component: "carousel",
+                  props: {
+                    items: [{ title: "Albany", description: "$139.95\n".repeat(40) }],
+                  },
+                  event_id: 2,
+                },
+              })
+            );
+          client.send(
+            JSON.stringify({
+              type: "agent_response",
+              agent_response_event: {
+                agent_response: "Here are some shoes",
+                event_id: 2,
+              },
+            })
+          );
+        });
+      }
+      if (agentId === "product_cards") {
+        let replies = 0;
+        client.addEventListener("message", (event) => {
+          const data = typeof event.data === "string" ? JSON.parse(event.data) : null;
+          if (data?.type !== "user_message") return;
+          replies++;
+          client.send(
+            JSON.stringify({
+              type: "agent_response",
+              agent_response_event: {
+                agent_response: "Here are some boots",
+                event_id: 2,
+              },
+            })
+          );
+          client.send(
+            JSON.stringify({
+              type: "rich_content",
+              rich_content: {
+                rich_content_id: `rc_boots_${replies}`,
+                component: "carousel",
+                props: {
+                  items: ["Albany", "Brixton", "Chelsea"].map((title) => ({
+                    title,
+                    subtitle: "$139.95",
+                    description:
+                      "Full-grain leather knee-high boot with a stacked heel and side zip, waterproofed for rain and snow.",
+                    image_url: `${ATTACHMENT_HOST}/${title}.svg`,
+                    rating: 4.6,
+                    review_count: 318,
+                    buttons: [
+                      {
+                        type: "link",
+                        label: "View",
+                        link: "https://example.com",
+                      },
+                      { label: "Add to cart", message: `Add ${title}` },
+                    ],
+                  })),
+                },
+                event_id: 2,
+              },
+            })
+          );
+        });
+      }
+      if (agentId === "agent_attachments") {
+        // Human-agent replies relay files: the first turn pairs text with an
+        // image and a PDF, the second is attachment-only with no text at all.
+        let replies = 0;
+        client.addEventListener("message", async (event) => {
+          const data = typeof event.data === "string" ? JSON.parse(event.data) : null;
+          if (data?.type !== "user_message") return;
+
+          replies++;
+          client.send(
+            JSON.stringify({
+              type: "agent_response",
+              agent_response_event:
+                replies === 1
+                  ? {
+                      agent_response: "Here is the receipt you asked for.",
+                      event_id: replies + 1,
+                      attachments: [
+                        {
+                          url: `${ATTACHMENT_HOST}/receipt.svg`,
+                          name: "receipt.svg",
+                          mime_type: "image/svg+xml",
+                        },
+                        {
+                          url: `${ATTACHMENT_HOST}/invoice.pdf`,
+                          name: "invoice.pdf",
+                          mime_type: "application/pdf",
+                        },
+                      ],
+                    }
+                  : {
+                      agent_response: "",
+                      event_id: replies + 1,
+                      attachments: [
+                        {
+                          url: `${ATTACHMENT_HOST}/diagram.svg`,
+                          name: "diagram.svg",
+                          mime_type: "image/svg+xml",
+                        },
+                        {
+                          url: "http://insecure.example.com/leak.png",
+                          name: "leak.png",
+                          mime_type: "image/png",
+                        },
+                      ],
+                    },
+            })
+          );
+        });
+      }
+      if (agentId === "persistent_session_voice" && !persistentConversation) {
+        // The voice call hangs up on its own so a test can check how the
+        // widget treats that close.
+        await new Promise((resolve) => setTimeout(resolve, 500));
+        client.close();
+      }
+      if (agentId === "external_agent") {
+        // Simulates a human agent takeover: the first user message triggers
+        // "external agent connected + typing", the second one triggers a
+        // handback via external_agent_disconnected with no other frames.
+        let takenOver = false;
+        client.addEventListener("message", async (event) => {
+          const data = typeof event.data === "string" ? JSON.parse(event.data) : null;
+          if (data?.type !== "user_message") return;
+
+          if (!takenOver) {
+            takenOver = true;
+            client.send(
+              JSON.stringify({
+                type: "external_agent_connected",
+                external_agent_connected_event: {},
+              })
+            );
+            await new Promise((resolve) => setTimeout(resolve, 0));
+            client.send(
+              JSON.stringify({
+                type: "agent_typing",
+                agent_typing_event: { is_typing: true },
+              })
+            );
+            return;
+          }
+
+          client.send(
+            JSON.stringify({
+              type: "external_agent_disconnected",
+              external_agent_disconnected_event: {},
             })
           );
         });

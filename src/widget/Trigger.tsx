@@ -39,9 +39,7 @@ export function Trigger({ expandable, expanded, onDismiss }: TriggerProps) {
           "bg-base shadow-md pointer-events-auto overflow-hidden",
           (isDisconnected.value || expanded.value) && "cursor-pointer"
         )}
-        onClick={
-          isDisconnected.value || expanded.value ? toggleExpanded : undefined
-        }
+        onClick={isDisconnected.value || expanded.value ? toggleExpanded : undefined}
       />
     );
   }

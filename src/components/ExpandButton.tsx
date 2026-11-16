@@ -6,11 +6,7 @@ interface ExpandButtonProps extends HTMLAttributes<HTMLButtonElement> {
   onExpand?: () => void;
 }
 
-export function ExpandButton({
-  className,
-  onExpand,
-  ...rest
-}: ExpandButtonProps) {
+export function ExpandButton({ className, onExpand, ...rest }: ExpandButtonProps) {
   const handleClick = (e: MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();

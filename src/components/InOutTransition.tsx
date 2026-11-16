@@ -1,10 +1,5 @@
 import { HTMLAttributes } from "preact/compat";
-import {
-  getSignalish,
-  peekSignalish,
-  Signalish,
-  useSignalish,
-} from "../utils/signalish";
+import { getSignalish, peekSignalish, Signalish, useSignalish } from "../utils/signalish";
 import { useSignal, useSignalEffect } from "@preact/signals";
 import { Slot } from "@radix-ui/react-slot";
 import { useReducedMotion } from "../utils/useReducedMotion";
@@ -49,6 +44,9 @@ export function InOutTransition(props: InOutTransitionProps) {
   return <Comp {...props} />;
 }
 
+// Longer than any transition used by InOutTransition children
+const EXIT_FALLBACK_MS = 500;
+
 function Reduced({ active, ...props }: InOutTransitionProps) {
   return getSignalish(active) ? <Slot data-shown={true} {...props} /> : null;
 }
@@ -63,8 +61,14 @@ function Animated({
 
   useSignalEffect(() => {
     if (active.value) {
-      visible.value = active.value;
+      visible.value = true;
+      return;
     }
+    // transitionend never fires if the exit transition doesn't start
+    const id = setTimeout(() => {
+      visible.value = false;
+    }, EXIT_FALLBACK_MS);
+    return () => clearTimeout(id);
   });
 
   const { handlers } = useCSSTransition({
@@ -74,7 +78,5 @@ function Animated({
   });
 
   if (!active.value && !visible.value) return null;
-  return (
-    <Slot data-shown={active.value && visible.value} {...handlers} {...props} />
-  );
+  return <Slot data-shown={active.value && visible.value} {...handlers} {...props} />;
 }

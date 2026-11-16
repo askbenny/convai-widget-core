@@ -23,10 +23,7 @@ const startsWithDoubleDollar = (str: string): boolean => {
 const endsWithDoubleDollar = (str: string): boolean => {
   let i = str.length - 1;
   // Skip trailing whitespace
-  while (
-    i >= 0 &&
-    (str[i] === " " || str[i] === "\t" || str[i] === "\n" || str[i] === "\r")
-  ) {
+  while (i >= 0 && (str[i] === " " || str[i] === "\t" || str[i] === "\n" || str[i] === "\r")) {
     i -= 1;
   }
   return i >= 1 && str[i] === "$" && str[i - 1] === "$";
