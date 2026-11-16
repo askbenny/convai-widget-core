@@ -30,6 +30,11 @@ function extractTableDataFromElement(tableElement: HTMLElement) {
   return { headers, rows };
 }
 
+// Backslashes first, so an escaped pipe in the source cannot end a cell.
+function escapeCell(cell: string) {
+  return cell.replace(/\\/g, "\\\\").replace(/\|/g, "\\|");
+}
+
 function tableDataToMarkdown(data: { headers: string[]; rows: string[][] }) {
   const { headers, rows } = data;
 
@@ -40,7 +45,7 @@ function tableDataToMarkdown(data: { headers: string[]; rows: string[][] }) {
   const markdownRows: string[] = [];
 
   // Add headers
-  const escapedHeaders = headers.map((h) => h.replace(/\|/g, "\\|"));
+  const escapedHeaders = headers.map(escapeCell);
   markdownRows.push(`| ${escapedHeaders.join(" | ")} |`);
 
   // Add separator row
@@ -53,7 +58,7 @@ function tableDataToMarkdown(data: { headers: string[]; rows: string[][] }) {
     while (paddedRow.length < headers.length) {
       paddedRow.push("");
     }
-    const escapedRow = paddedRow.map((cell) => cell.replace(/\|/g, "\\|"));
+    const escapedRow = paddedRow.map(escapeCell);
     markdownRows.push(`| ${escapedRow.join(" | ")} |`);
   }
 
