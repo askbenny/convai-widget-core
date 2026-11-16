@@ -3,6 +3,7 @@ import { useTextContents } from "../contexts/text-contents";
 import { useEndConfirmation } from "../contexts/end-confirmation";
 import { useIsConversationTextOnly } from "../contexts/widget-config";
 import { Button } from "../components/Button";
+import { trappedFocusTarget } from "../utils/focusTrap";
 
 interface EndConfirmationDialogProps extends HTMLAttributes<HTMLDivElement> {
   overlay?: boolean;
@@ -14,23 +15,56 @@ export function EndConfirmationDialog({ overlay, ...transitionProps }: EndConfir
   const { confirmationShown, confirmEnd, cancelEnd } = useEndConfirmation();
   const dismissed = !confirmationShown.value;
   const cancelRef = useRef<HTMLButtonElement>(null);
+  const cardRef = useRef<HTMLDivElement>(null);
+  const returnFocusRef = useRef<HTMLElement | null>(null);
   const titleId = useId();
   const descriptionId = useId();
 
   useEffect(() => {
+    // Closing leaves the dialog mounted until its exit animation ends; it must
+    // stop handling keys right away so Tab and Escape reach the page again.
+    if (dismissed) return;
+    // The widget lives in a shadow root, whose activeElement is the control
+    // that opened this dialog; document.activeElement is only the host.
+    const root = cardRef.current?.getRootNode() as Document | ShadowRoot | undefined;
+    returnFocusRef.current = (root?.activeElement as HTMLElement | null) ?? null;
     cancelRef.current?.focus();
 
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === "Escape") {
         cancelEnd();
+        return;
+      }
+      // Modal: Tab and Shift+Tab stay on the dialog's own buttons.
+      if (e.key !== "Tab" || !cardRef.current) return;
+      const focusable = Array.from(
+        cardRef.current.querySelectorAll<HTMLElement>("button:not([disabled])")
+      );
+      const target = trappedFocusTarget(
+        focusable,
+        (root?.activeElement as HTMLElement | null) ?? null,
+        e.shiftKey
+      );
+      if (target) {
+        e.preventDefault();
+        target.focus();
       }
     };
     document.addEventListener("keydown", handleKeyDown);
     return () => document.removeEventListener("keydown", handleKeyDown);
-  }, [cancelEnd]);
+  }, [cancelEnd, dismissed]);
+
+  // Give focus back to the control that opened the confirmation once it closes.
+  useEffect(() => {
+    if (!dismissed) return;
+    const opener = returnFocusRef.current;
+    returnFocusRef.current = null;
+    if (opener?.isConnected) opener.focus();
+  }, [dismissed]);
 
   const card = (
     <div
+      ref={cardRef}
       role="alertdialog"
       aria-modal="true"
       aria-labelledby={titleId}

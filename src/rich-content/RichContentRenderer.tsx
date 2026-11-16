@@ -30,8 +30,15 @@ const RICH_CONTENT_COMPONENTS: Record<string, RichContentComponentEntry> = {
   },
 };
 
+/** The renderer for a component name the agent sent; inherited names such as `constructor` are unknown. */
+export function richContentEntry(component: string): RichContentComponentEntry | undefined {
+  return Object.prototype.hasOwnProperty.call(RICH_CONTENT_COMPONENTS, component)
+    ? RICH_CONTENT_COMPONENTS[component]
+    : undefined;
+}
+
 export function RichContentRenderer({ component, props, richContentId }: RichContentRendererProps) {
-  const entry = RICH_CONTENT_COMPONENTS[component];
+  const entry = richContentEntry(component);
   const parsed = entry?.parseProps(props);
   if (entry && parsed) {
     return entry.render(parsed, richContentId);
