@@ -1,5 +1,10 @@
 # Changes
 
+## 1.5.1
+
+- The end-of-chat confirmation is modal for the keyboard: Tab and Shift+Tab stay on its buttons, focus returns to the control that opened it, and it stops handling keys as soon as it closes, so Tab and Escape are not swallowed during its exit animation.
+- Rich content only renders the component names the widget defines. An inherited name such as `constructor` or `__proto__` now shows the fallback instead of throwing.
+
 ## 1.5.0
 
 Brings the widget up to date with the ElevenLabs widget (`@elevenlabs/convai-widget-core` 0.26.0, `@elevenlabs/client` 1.36.1), keeping Ask Benny's managed sessions, branding, orbs and privacy choices.
