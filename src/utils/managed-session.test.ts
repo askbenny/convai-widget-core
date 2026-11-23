@@ -5,6 +5,9 @@ import {
   fetchWidgetConfig,
   fetchWidgetSession,
   primeWidgetConfig,
+  recallTextOnly,
+  rememberTextOnly,
+  TEXT_ONLY_STORAGE_KEY,
   widgetApiOrigin,
 } from "./managed-session";
 
@@ -57,6 +60,34 @@ describe("managed widget sessions", () => {
       "https://api.askbenny.ca/elevenlabs/agents/config?agentId=agent",
       { signal, cache: "no-store" }
     );
+  });
+  it("remembers the chat-only answer per agent and environment", () => {
+    try {
+      expect(recallTextOnly("agent", undefined)).toBeUndefined();
+      rememberTextOnly("agent", undefined, true);
+      rememberTextOnly("agent", "development", false);
+      expect(recallTextOnly("agent", undefined)).toBe(true);
+      expect(recallTextOnly("agent", "production")).toBe(true);
+      expect(recallTextOnly("agent", "development")).toBe(false);
+      expect(recallTextOnly("other", undefined)).toBeUndefined();
+    } finally {
+      Object.keys(localStorage)
+        .filter((key) => key.startsWith(TEXT_ONLY_STORAGE_KEY))
+        .forEach((key) => localStorage.removeItem(key));
+    }
+  });
+  it("treats unavailable storage as nothing remembered", () => {
+    const blocked = () => {
+      throw new Error("blocked");
+    };
+    vi.spyOn(Storage.prototype, "getItem").mockImplementation(blocked);
+    vi.spyOn(Storage.prototype, "setItem").mockImplementation(blocked);
+    try {
+      expect(() => rememberTextOnly("agent", undefined, true)).not.toThrow();
+      expect(recallTextOnly("agent", undefined)).toBeUndefined();
+    } finally {
+      vi.restoreAllMocks();
+    }
   });
   it("does not hand over an early config request that has gone stale", async () => {
     const fetch = vi.fn().mockResolvedValue({ ok: true, json: async () => ({ body: session }) });

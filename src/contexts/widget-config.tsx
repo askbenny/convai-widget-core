@@ -17,7 +17,7 @@ import { useServerLocation } from "./server-location";
 
 import { useContextSafely } from "../utils/useContextSafely";
 import { loadWidgetPresentation } from "../utils/widget-presentation";
-import { primeWidgetConfig } from "../utils/managed-session";
+import { primeWidgetConfig, recallTextOnly, rememberTextOnly } from "../utils/managed-session";
 import { parseBoolAttribute } from "../types/attributes";
 import { useLanguageConfig } from "./language-config";
 import { useConversation } from "./conversation";
@@ -51,8 +51,9 @@ const DefaultOrchestratorWidgetConfig: WidgetConfig = {
   supports_text_only: true,
 };
 
-// How long the first paint waits to learn whether the agent is chat only. A slower
-// answer still applies when it arrives; a failed one leaves the provider's setting.
+// How long a first visit's first paint waits, from the start of loading, to learn whether
+// the agent is chat only. Later visits paint with the remembered answer and do not wait.
+// A slower answer still applies when it arrives; a failed one leaves what was known.
 export const MANAGED_TEXT_ONLY_WAIT_MS = 2000;
 
 function settleWithin<T>(promise: Promise<T>, ms: number): Promise<T | undefined> {
@@ -117,35 +118,49 @@ export function WidgetConfigProvider({ children }: WidgetConfigProviderProps) {
     }
 
     const abort = new AbortController();
+    const started = Date.now();
+    const managedAgentId = currentAgentId;
+    const managedEnvironment = environment.value;
     // A host passing its own signed URL owns the session, so there is nothing to ask.
-    const textOnly = signedUrl.value
-      ? Promise.resolve(false)
-      : primeWidgetConfig(currentAgentId, environment.value).then(
-          (agent) => agent.conversation?.textOnly === true,
-          () => false
-        );
-    // Both are known before the first paint, so a chat-only launcher never shows a call button.
-    Promise.all([
-      loadWidgetPresentation({
-        agentId: currentAgentId,
-        serverUrl: serverUrl.value,
-        signal: abort.signal,
-        conversationSignature,
-        environment: environment.value,
-      }),
-      settleWithin(textOnly, MANAGED_TEXT_ONLY_WAIT_MS),
-    ])
-      .then(([config, knownTextOnly]) => {
+    const managed = !signedUrl.value;
+    const remembered = managed ? recallTextOnly(managedAgentId, managedEnvironment) : false;
+    let answered: boolean | undefined;
+    const answer = managed
+      ? primeWidgetConfig(managedAgentId, managedEnvironment).then(
+          (agent) => {
+            const textOnly = agent.conversation?.textOnly === true;
+            rememberTextOnly(managedAgentId, managedEnvironment, textOnly);
+            return textOnly;
+          },
+          () => remembered ?? false
+        )
+      : Promise.resolve(false);
+    void answer.then((textOnly) => {
+      answered = textOnly;
+    });
+    loadWidgetPresentation({
+      agentId: currentAgentId,
+      serverUrl: serverUrl.value,
+      signal: abort.signal,
+      conversationSignature,
+      environment: environment.value,
+    })
+      .then(async (config) => {
+        // Paint with what is known: this load's answer, or else the last visit's. Only a
+        // first visit waits, so a chat-only launcher never shows a call button first.
+        const textOnly =
+          answered ??
+          remembered ??
+          (await settleWithin(answer, MANAGED_TEXT_ONLY_WAIT_MS - (Date.now() - started)));
         if (abort.signal.aborted) return;
         batch(() => {
           fetchedConfig.value = config;
-          managedTextOnly.value = knownTextOnly ?? false;
+          managedTextOnly.value = textOnly ?? false;
         });
-        if (knownTextOnly === undefined) {
-          void textOnly.then((late) => {
-            if (!abort.signal.aborted) managedTextOnly.value = late;
-          });
-        }
+        // This load's answer still wins when it arrives after the paint.
+        void answer.then((latest) => {
+          if (!abort.signal.aborted) managedTextOnly.value = latest;
+        });
       })
       .catch((error) => {
         console.error(

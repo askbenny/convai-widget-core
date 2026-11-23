@@ -41,6 +41,36 @@ export function primeWidgetConfig(
   return request;
 }
 
+// What Ask Benny last answered about "Chat only" for this agent, kept in the visitor's
+// browser so a repeat page load paints the right launcher at once. Not about the visitor.
+export const TEXT_ONLY_STORAGE_KEY = "askbenny_convai_text_only";
+
+export function recallTextOnly(agentId: string, environment: string | undefined) {
+  try {
+    const stored = localStorage.getItem(
+      `${TEXT_ONLY_STORAGE_KEY}:${primedConfigKey(agentId, environment)}`
+    );
+    return stored === "1" ? true : stored === "0" ? false : undefined;
+  } catch {
+    return undefined; // localStorage may be unavailable
+  }
+}
+
+export function rememberTextOnly(
+  agentId: string,
+  environment: string | undefined,
+  textOnly: boolean
+) {
+  try {
+    localStorage.setItem(
+      `${TEXT_ONLY_STORAGE_KEY}:${primedConfigKey(agentId, environment)}`,
+      textOnly ? "1" : "0"
+    );
+  } catch {
+    // localStorage may be unavailable
+  }
+}
+
 export async function fetchWidgetConfig(
   agentId: string,
   environment: string | undefined,
