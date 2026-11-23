@@ -3,6 +3,9 @@ import { describe, it, beforeAll, beforeEach, afterEach, expect, afterAll, vi } 
 import { Worker } from "./mocks/browser";
 import { setupWebComponent } from "./mocks/web-component";
 import { Variants } from "./types/config";
+import { http, HttpResponse } from "msw";
+import { MANAGED_TEXT_ONLY_WAIT_MS } from "./contexts/widget-config";
+import { TEXT_ONLY_STORAGE_KEY } from "./utils/managed-session";
 
 describe("askbenny-convai", () => {
   beforeAll(() => Worker.start({ quiet: true, onUnhandledRequest: "error" }));
@@ -1693,6 +1696,152 @@ describe("askbenny-convai", () => {
 
       await expect.element(page.getByText("An error occurred")).toBeInTheDocument();
       await expect.element(page.getByText("ID")).toBeInTheDocument();
+    });
+  });
+
+  describe("chat only set in Ask Benny", () => {
+    const forgetTextOnly = () =>
+      Object.keys(localStorage)
+        .filter((key) => key.startsWith(TEXT_ONLY_STORAGE_KEY))
+        .forEach((key) => localStorage.removeItem(key));
+    const holdConfig = (agentId: string, textOnly: boolean) => {
+      let release!: () => void;
+      const pending = new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      Worker.use(
+        http.get("https://api.askbenny.ca/elevenlabs/agents/config", async () => {
+          await pending;
+          return HttpResponse.json({
+            body: {
+              schemaVersion: 2,
+              agentId,
+              branchId: `widget-${agentId}`,
+              conversation: { textOnly },
+            },
+          });
+        })
+      );
+      return release;
+    };
+    // Each test starts as a first visit.
+    beforeEach(forgetTextOnly);
+    afterEach(() => {
+      Worker.resetHandlers();
+      forgetTextOnly();
+    });
+
+    it.each(Variants)("$0 launcher offers the chat and no call", async (variant) => {
+      setupWebComponent({ "agent-id": "managed_chat_only", variant });
+
+      const messageButton = page.getByRole("button", { name: "Message" });
+      await expect.element(messageButton).toBeInTheDocument();
+      // The call entry point, relabelled "Start Chat" by the business, is gone.
+      await expect
+        .element(page.getByRole("button", { name: "Start Chat" }))
+        .not.toBeInTheDocument();
+
+      await messageButton.click();
+      await expect
+        .element(page.getByRole("textbox", { name: "Text message input" }))
+        .toBeInTheDocument();
+      // The agent is still voice capable: its greeting loses the tags written for speech.
+      await expect.element(page.getByText("Welcome in")).toBeInTheDocument();
+      await expect.element(page.getByText("[happy]")).not.toBeInTheDocument();
+    });
+
+    it("waits for the setting on a first visit, so the call button never shows first", async () => {
+      const release = holdConfig("managed_chat_only", true);
+      setupWebComponent({ "agent-id": "managed_chat_only" });
+
+      await new Promise((resolve) => setTimeout(resolve, 300));
+      expect(page.getByRole("button", { name: "Start Chat" }).elements()).toHaveLength(0);
+      release();
+      await expect.element(page.getByRole("button", { name: "Message" })).toBeInTheDocument();
+      expect(page.getByRole("button", { name: "Start Chat" }).elements()).toHaveLength(0);
+    });
+
+    it("keeps the launcher when the setting cannot be read", async () => {
+      Worker.use(
+        http.get(
+          "https://api.askbenny.ca/elevenlabs/agents/config",
+          () => new HttpResponse(null, { status: 503 })
+        )
+      );
+      setupWebComponent({ "agent-id": "managed_chat_only" });
+
+      await expect.element(page.getByRole("button", { name: "Start Chat" })).toBeInTheDocument();
+    });
+
+    it("shows the launcher after a bounded wait, then follows a late answer", async () => {
+      const release = holdConfig("managed_chat_only", true);
+      setupWebComponent({ "agent-id": "managed_chat_only" });
+
+      await expect
+        .element(page.getByRole("button", { name: "Start Chat" }), {
+          timeout: MANAGED_TEXT_ONLY_WAIT_MS + 2000,
+        })
+        .toBeInTheDocument();
+      release();
+      await expect.element(page.getByRole("button", { name: "Message" })).toBeInTheDocument();
+      await expect
+        .element(page.getByRole("button", { name: "Start Chat" }))
+        .not.toBeInTheDocument();
+    });
+
+    it("paints a repeat visit from the remembered setting without waiting", async () => {
+      const first = setupWebComponent({ "agent-id": "managed_chat_only" });
+      await expect.element(page.getByRole("button", { name: "Message" })).toBeInTheDocument();
+      first.remove();
+
+      // The answer never arrives on this load, and none is needed.
+      holdConfig("managed_chat_only", true);
+      setupWebComponent({ "agent-id": "managed_chat_only" });
+      await expect
+        .element(page.getByRole("button", { name: "Message" }), { timeout: 1000 })
+        .toBeInTheDocument();
+      expect(page.getByRole("button", { name: "Start Chat" }).elements()).toHaveLength(0);
+    });
+
+    it("does not make a voice widget wait on a repeat visit", async () => {
+      const first = setupWebComponent({ "agent-id": "basic" });
+      await expect.element(page.getByRole("button", { name: "Start a call" })).toBeInTheDocument();
+      first.remove();
+
+      holdConfig("basic", false);
+      setupWebComponent({ "agent-id": "basic" });
+      await expect
+        .element(page.getByRole("button", { name: "Start a call" }), { timeout: 1000 })
+        .toBeInTheDocument();
+    });
+
+    it("falls back to the remembered setting when it cannot be read", async () => {
+      const first = setupWebComponent({ "agent-id": "managed_chat_only" });
+      await expect.element(page.getByRole("button", { name: "Message" })).toBeInTheDocument();
+      first.remove();
+
+      Worker.use(
+        http.get(
+          "https://api.askbenny.ca/elevenlabs/agents/config",
+          () => new HttpResponse(null, { status: 503 })
+        )
+      );
+      setupWebComponent({ "agent-id": "managed_chat_only" });
+      await expect.element(page.getByRole("button", { name: "Message" })).toBeInTheDocument();
+      expect(page.getByRole("button", { name: "Start Chat" }).elements()).toHaveLength(0);
+    });
+
+    it("follows a setting that changed since the last visit", async () => {
+      const first = setupWebComponent({ "agent-id": "managed_chat_only" });
+      await expect.element(page.getByRole("button", { name: "Message" })).toBeInTheDocument();
+      first.remove();
+
+      // The business turned voice back on.
+      const release = holdConfig("managed_chat_only", false);
+      setupWebComponent({ "agent-id": "managed_chat_only" });
+      await expect.element(page.getByRole("button", { name: "Message" })).toBeInTheDocument();
+      release();
+      await expect.element(page.getByRole("button", { name: "Start Chat" })).toBeInTheDocument();
     });
   });
 

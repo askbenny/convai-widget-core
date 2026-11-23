@@ -1,4 +1,4 @@
-import { ReadonlySignal, useComputed, useSignal, useSignalEffect } from "@preact/signals";
+import { ReadonlySignal, batch, useComputed, useSignal, useSignalEffect } from "@preact/signals";
 import { TinyColor } from "@ctrl/tinycolor";
 import { ComponentChildren } from "preact";
 import { createContext } from "preact/compat";
@@ -17,6 +17,7 @@ import { useServerLocation } from "./server-location";
 
 import { useContextSafely } from "../utils/useContextSafely";
 import { loadWidgetPresentation } from "../utils/widget-presentation";
+import { primeWidgetConfig, recallTextOnly, rememberTextOnly } from "../utils/managed-session";
 import { parseBoolAttribute } from "../types/attributes";
 import { useLanguageConfig } from "./language-config";
 import { useConversation } from "./conversation";
@@ -24,6 +25,7 @@ import { useSessionConfig, useSessionPresentation } from "./session-config";
 import { interpolateDynamicVariables, parseDynamicVariables } from "../utils/dynamicVariables";
 
 const WidgetConfigContext = createContext<ReadonlySignal<WidgetConfig> | null>(null);
+const AgentTextOnlyContext = createContext<ReadonlySignal<boolean> | null>(null);
 
 // Self-hosted orchestrators have no HTTP API to serve a widget appearance config.
 const DefaultOrchestratorWidgetConfig: WidgetConfig = {
@@ -49,6 +51,21 @@ const DefaultOrchestratorWidgetConfig: WidgetConfig = {
   supports_text_only: true,
 };
 
+// How long a first visit's first paint waits, from the start of loading, to learn whether
+// the agent is chat only. Later visits paint with the remembered answer and do not wait.
+// A slower answer still applies when it arrives; a failed one leaves what was known.
+export const MANAGED_TEXT_ONLY_WAIT_MS = 2000;
+
+function settleWithin<T>(promise: Promise<T>, ms: number): Promise<T | undefined> {
+  return new Promise((resolve) => {
+    const timer = setTimeout(() => resolve(undefined), ms);
+    void promise.then((value) => {
+      clearTimeout(timer);
+      resolve(value);
+    });
+  });
+}
+
 interface WidgetConfigProviderProps {
   children: ComponentChildren;
 }
@@ -61,13 +78,19 @@ export function WidgetConfigProvider({ children }: WidgetConfigProviderProps) {
   const environment = useAttribute("environment");
   const orchestrator = useOrchestrator();
   const fetchedConfig = useSignal<WidgetConfig | null>(null);
+  // "Chat only" is an Ask Benny setting. The provider's presentation never carries it.
+  const managedTextOnly = useSignal(false);
 
   useSignalEffect(() => {
     if (overrideConfig.value) {
       try {
         const config = JSON.parse(overrideConfig.value);
         if (config) {
-          fetchedConfig.value = config;
+          // The host owns this presentation, its text_only included.
+          batch(() => {
+            fetchedConfig.value = config;
+            managedTextOnly.value = false;
+          });
           return;
         }
       } catch (error: any) {
@@ -75,7 +98,10 @@ export function WidgetConfigProvider({ children }: WidgetConfigProviderProps) {
       }
     }
     if (orchestrator.enabled.value) {
-      fetchedConfig.value = structuredClone(DefaultOrchestratorWidgetConfig);
+      batch(() => {
+        fetchedConfig.value = structuredClone(DefaultOrchestratorWidgetConfig);
+        managedTextOnly.value = false;
+      });
       return;
     }
     let currentAgentId: string | undefined = agentId.value;
@@ -92,6 +118,26 @@ export function WidgetConfigProvider({ children }: WidgetConfigProviderProps) {
     }
 
     const abort = new AbortController();
+    const started = Date.now();
+    const managedAgentId = currentAgentId;
+    const managedEnvironment = environment.value;
+    // A host passing its own signed URL owns the session, so there is nothing to ask.
+    const managed = !signedUrl.value;
+    const remembered = managed ? recallTextOnly(managedAgentId, managedEnvironment) : false;
+    let answered: boolean | undefined;
+    const answer = managed
+      ? primeWidgetConfig(managedAgentId, managedEnvironment).then(
+          (agent) => {
+            const textOnly = agent.conversation?.textOnly === true;
+            rememberTextOnly(managedAgentId, managedEnvironment, textOnly);
+            return textOnly;
+          },
+          () => remembered ?? false
+        )
+      : Promise.resolve(false);
+    void answer.then((textOnly) => {
+      answered = textOnly;
+    });
     loadWidgetPresentation({
       agentId: currentAgentId,
       serverUrl: serverUrl.value,
@@ -99,10 +145,22 @@ export function WidgetConfigProvider({ children }: WidgetConfigProviderProps) {
       conversationSignature,
       environment: environment.value,
     })
-      .then((config) => {
-        if (!abort.signal.aborted) {
+      .then(async (config) => {
+        // Paint with what is known: this load's answer, or else the last visit's. Only a
+        // first visit waits, so a chat-only launcher never shows a call button first.
+        const textOnly =
+          answered ??
+          remembered ??
+          (await settleWithin(answer, MANAGED_TEXT_ONLY_WAIT_MS - (Date.now() - started)));
+        if (abort.signal.aborted) return;
+        batch(() => {
           fetchedConfig.value = config;
-        }
+          managedTextOnly.value = textOnly ?? false;
+        });
+        // This load's answer still wins when it arrives after the paint.
+        void answer.then((latest) => {
+          if (!abort.signal.aborted) managedTextOnly.value = latest;
+        });
       })
       .catch((error) => {
         console.error(
@@ -142,6 +200,10 @@ export function WidgetConfigProvider({ children }: WidgetConfigProviderProps) {
   const endConfirmation = useAttribute("end-confirmation");
   const showLanguageSelectorOnTrigger = useAttribute("show-language-selector-on-trigger");
 
+  const agentTextOnly = useComputed(
+    () => parseBoolAttribute(overrideTextOnly.value) ?? fetchedConfig.value?.text_only ?? false
+  );
+
   const value = useComputed<WidgetConfig | null>(() => {
     if (!fetchedConfig.value) {
       return null;
@@ -151,8 +213,8 @@ export function WidgetConfigProvider({ children }: WidgetConfigProviderProps) {
     const patchedPlacement = placement.value ?? fetchedConfig.value.placement;
     const patchedTermsKey = termsKey.value ?? fetchedConfig.value.terms_key;
 
-    const textOnly =
-      parseBoolAttribute(overrideTextOnly.value) ?? fetchedConfig.value.text_only ?? false;
+    // The session Ask Benny signs for a chat-only agent is text only whatever the page asks for.
+    const textOnly = managedTextOnly.value || agentTextOnly.value;
 
     const patchedMicMuting =
       parseBoolAttribute(micMuting.value) ?? fetchedConfig.value.mic_muting_enabled;
@@ -169,7 +231,9 @@ export function WidgetConfigProvider({ children }: WidgetConfigProviderProps) {
     const patchedDismissible =
       parseBoolAttribute(dismissible.value) ?? fetchedConfig.value.dismissible ?? false;
     const patchedStripAudioTags =
-      parseBoolAttribute(stripAudioTags.value) ?? fetchedConfig.value.strip_audio_tags ?? !textOnly;
+      parseBoolAttribute(stripAudioTags.value) ??
+      fetchedConfig.value.strip_audio_tags ??
+      !agentTextOnly.value;
     const patchedUseRtc = parseBoolAttribute(useRtc.value) ?? fetchedConfig.value.use_rtc ?? false;
     const patchedShowAgentStatus =
       parseBoolAttribute(showAgentStatus.value) ?? fetchedConfig.value.show_agent_status ?? false;
@@ -203,6 +267,7 @@ export function WidgetConfigProvider({ children }: WidgetConfigProviderProps) {
       variant: parseVariant(patchedVariant),
       placement: parsePlacement(patchedPlacement),
       terms_key: patchedTermsKey,
+      text_only: textOnly,
       mic_muting_enabled: !textOnly && patchedMicMuting,
       // A page always shows the chat
       transcript_enabled: textOnly || isPage || patchedTranscript,
@@ -233,7 +298,9 @@ export function WidgetConfigProvider({ children }: WidgetConfigProviderProps) {
 
   return (
     <WidgetConfigContext.Provider value={value as ReadonlySignal<WidgetConfig>}>
-      {children}
+      <AgentTextOnlyContext.Provider value={agentTextOnly}>
+        {children}
+      </AgentTextOnlyContext.Provider>
     </WidgetConfigContext.Provider>
   );
 }
@@ -243,10 +310,18 @@ export function useWidgetConfig() {
 }
 
 export function useTextOnly() {
-  const override = useAttribute("override-text-only");
   const config = useWidgetConfig();
 
-  return useComputed(() => parseBoolAttribute(override.value) ?? config.value.text_only ?? false);
+  // Already resolved by the provider: Ask Benny's setting, the attribute, then the agent's own.
+  return useComputed(() => config.value.text_only ?? false);
+}
+
+/**
+ * Whether the agent itself is text only, before Ask Benny's "Chat only" setting. A chat-only
+ * widget on a voice agent still gets text written for speech, audio tags included.
+ */
+export function useAgentTextOnly() {
+  return useContextSafely(AgentTextOnlyContext);
 }
 
 export function useIsConversationTextOnly() {

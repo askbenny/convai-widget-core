@@ -9,7 +9,7 @@ import { AttributesProvider } from "./attributes";
 import { ServerLocationProvider } from "./server-location";
 import { OrchestratorProvider } from "./orchestrator-config";
 import { WidgetSizeProvider } from "./widget-size";
-import { WidgetConfigProvider, useFirstMessage } from "./widget-config";
+import { MANAGED_TEXT_ONLY_WAIT_MS, WidgetConfigProvider, useFirstMessage } from "./widget-config";
 import { LanguageConfigProvider } from "./language-config";
 import { TermsProvider, useTerms } from "./terms";
 import { SessionConfigProvider, useSessionPresentation } from "./session-config";
@@ -156,8 +156,13 @@ describe("managed session lifecycle", () => {
           sendUserMessage: () => {},
         } as unknown as Conversation;
       });
+      const previous = state;
       mount();
       await vi.waitFor(() => expect(requested).toBe(true));
+      // The first paint waits a bounded time for the late request before going ahead without it.
+      await vi.waitFor(() => expect(state).not.toBe(previous), {
+        timeout: MANAGED_TEXT_ONLY_WAIT_MS + 2000,
+      });
       state.terms.acceptTerms();
       await state.conversation.startSession(container, "Hello");
       release();

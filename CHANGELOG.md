@@ -1,5 +1,11 @@
 # Changes
 
+## 1.5.2
+
+- A website assistant set to "Chat only" in Ask Benny opens with the chat button alone. The launcher used to read only the provider's own text-only flag, which that setting does not change, so it showed the call button (with a phone icon) beside the chat button, and the call button opened a text chat. The launcher, the sheet and the page layout now follow the same setting the session does.
+- The setting is read in the same request the session provider already made on load, started earlier, so there is no extra request. A first visit waits for it before the launcher appears (at most 2 seconds from the start of loading), so the call button never shows first. The answer is remembered per agent in the browser's local storage (`askbenny_convai_text_only:<environment>:<agent id>`, `1` or `0`, nothing about the visitor), so later page loads paint the right launcher at once and do not wait. A newer answer always replaces the remembered one, and a failed request leaves what was known.
+- Audio tags are still stripped from the greeting and messages of a chat-only assistant whose agent is voice capable. Only an agent that is text only itself keeps them.
+
 ## 1.5.1
 
 - The end-of-chat confirmation is modal for the keyboard: Tab and Shift+Tab stay on its buttons, focus returns to the control that opened it, and it stops handling keys as soon as it closes, so Tab and Escape are not swallowed during its exit animation.

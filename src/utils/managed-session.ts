@@ -23,18 +23,70 @@ export function widgetApiOrigin(environment?: string): string {
   throw new Error("Unsupported website assistant environment.");
 }
 
+// The launcher needs the agent's chat-only setting before it first paints, and the
+// session provider asks for the same response as soon as it mounts. The second
+// caller takes the first one's request instead of sending it again.
+const PRIMED_CONFIG_MAX_AGE_MS = 10_000;
+const primedConfigs = new Map<string, { at: number; request: Promise<PublicAgentConfig> }>();
+const primedConfigKey = (agentId: string, environment: string | undefined) =>
+  `${environment || "production"}:${agentId}`;
+
+/** Starts the config request early. Never aborted: each reader ignores a late answer itself. */
+export function primeWidgetConfig(
+  agentId: string,
+  environment: string | undefined
+): Promise<PublicAgentConfig> {
+  const request = requestWidget("agents/config", agentId, environment);
+  primedConfigs.set(primedConfigKey(agentId, environment), { at: Date.now(), request });
+  return request;
+}
+
+// What Ask Benny last answered about "Chat only" for this agent, kept in the visitor's
+// browser so a repeat page load paints the right launcher at once. Not about the visitor.
+export const TEXT_ONLY_STORAGE_KEY = "askbenny_convai_text_only";
+
+export function recallTextOnly(agentId: string, environment: string | undefined) {
+  try {
+    const stored = localStorage.getItem(
+      `${TEXT_ONLY_STORAGE_KEY}:${primedConfigKey(agentId, environment)}`
+    );
+    return stored === "1" ? true : stored === "0" ? false : undefined;
+  } catch {
+    return undefined; // localStorage may be unavailable
+  }
+}
+
+export function rememberTextOnly(
+  agentId: string,
+  environment: string | undefined,
+  textOnly: boolean
+) {
+  try {
+    localStorage.setItem(
+      `${TEXT_ONLY_STORAGE_KEY}:${primedConfigKey(agentId, environment)}`,
+      textOnly ? "1" : "0"
+    );
+  } catch {
+    // localStorage may be unavailable
+  }
+}
+
 export async function fetchWidgetConfig(
   agentId: string,
   environment: string | undefined,
   signal: AbortSignal
 ): Promise<PublicAgentConfig> {
+  const key = primedConfigKey(agentId, environment);
+  const primed = primedConfigs.get(key);
+  primedConfigs.delete(key);
+  if (primed && Date.now() - primed.at < PRIMED_CONFIG_MAX_AGE_MS) return primed.request;
   return requestWidget("agents/config", agentId, environment, signal);
 }
 async function requestWidget(
   path: string,
   agentId: string,
   environment: string | undefined,
-  signal: AbortSignal
+  signal?: AbortSignal
 ) {
   const response = await fetch(
     `${widgetApiOrigin(environment)}/elevenlabs/${path}?agentId=${encodeURIComponent(agentId)}`,

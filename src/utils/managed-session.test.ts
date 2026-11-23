@@ -1,6 +1,15 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { SessionConfig } from "@elevenlabs/client";
-import { applyManagedSession, fetchWidgetSession, widgetApiOrigin } from "./managed-session";
+import {
+  applyManagedSession,
+  fetchWidgetConfig,
+  fetchWidgetSession,
+  primeWidgetConfig,
+  recallTextOnly,
+  rememberTextOnly,
+  TEXT_ONLY_STORAGE_KEY,
+  widgetApiOrigin,
+} from "./managed-session";
 
 afterEach(() => vi.unstubAllGlobals());
 const session = {
@@ -31,6 +40,67 @@ describe("managed widget sessions", () => {
       "https://api-dev.askbenny.ca/elevenlabs/signed-url?agentId=a%26b",
       { signal: controller.signal, cache: "no-store" }
     );
+  });
+  it("hands an early config request to its own agent and environment, once", async () => {
+    const fetch = vi.fn().mockResolvedValue({ ok: true, json: async () => ({ body: session }) });
+    vi.stubGlobal("fetch", fetch);
+    const signal = new AbortController().signal;
+    const early = primeWidgetConfig("agent", undefined);
+    expect(fetch).toHaveBeenCalledTimes(1);
+    // Another environment or agent asks for itself and leaves the early request alone.
+    await fetchWidgetConfig("agent", "development", signal);
+    await fetchWidgetConfig("other", undefined, signal).catch(() => {});
+    expect(fetch).toHaveBeenCalledTimes(3);
+    expect(await fetchWidgetConfig("agent", undefined, signal)).toBe(await early);
+    expect(fetch).toHaveBeenCalledTimes(3);
+    // Taken once: the next reader asks again.
+    await fetchWidgetConfig("agent", undefined, signal);
+    expect(fetch).toHaveBeenCalledTimes(4);
+    expect(fetch).toHaveBeenLastCalledWith(
+      "https://api.askbenny.ca/elevenlabs/agents/config?agentId=agent",
+      { signal, cache: "no-store" }
+    );
+  });
+  it("remembers the chat-only answer per agent and environment", () => {
+    try {
+      expect(recallTextOnly("agent", undefined)).toBeUndefined();
+      rememberTextOnly("agent", undefined, true);
+      rememberTextOnly("agent", "development", false);
+      expect(recallTextOnly("agent", undefined)).toBe(true);
+      expect(recallTextOnly("agent", "production")).toBe(true);
+      expect(recallTextOnly("agent", "development")).toBe(false);
+      expect(recallTextOnly("other", undefined)).toBeUndefined();
+    } finally {
+      Object.keys(localStorage)
+        .filter((key) => key.startsWith(TEXT_ONLY_STORAGE_KEY))
+        .forEach((key) => localStorage.removeItem(key));
+    }
+  });
+  it("treats unavailable storage as nothing remembered", () => {
+    const blocked = () => {
+      throw new Error("blocked");
+    };
+    vi.spyOn(Storage.prototype, "getItem").mockImplementation(blocked);
+    vi.spyOn(Storage.prototype, "setItem").mockImplementation(blocked);
+    try {
+      expect(() => rememberTextOnly("agent", undefined, true)).not.toThrow();
+      expect(recallTextOnly("agent", undefined)).toBeUndefined();
+    } finally {
+      vi.restoreAllMocks();
+    }
+  });
+  it("does not hand over an early config request that has gone stale", async () => {
+    const fetch = vi.fn().mockResolvedValue({ ok: true, json: async () => ({ body: session }) });
+    vi.stubGlobal("fetch", fetch);
+    vi.useFakeTimers();
+    try {
+      await primeWidgetConfig("agent", undefined);
+      vi.advanceTimersByTime(10_000);
+      await fetchWidgetConfig("agent", undefined, new AbortController().signal);
+      expect(fetch).toHaveBeenCalledTimes(2);
+    } finally {
+      vi.useRealTimers();
+    }
   });
   it.each([
     { ok: false, body: session },
