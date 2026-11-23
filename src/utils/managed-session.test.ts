@@ -1,6 +1,12 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { SessionConfig } from "@elevenlabs/client";
-import { applyManagedSession, fetchWidgetSession, widgetApiOrigin } from "./managed-session";
+import {
+  applyManagedSession,
+  fetchWidgetConfig,
+  fetchWidgetSession,
+  primeWidgetConfig,
+  widgetApiOrigin,
+} from "./managed-session";
 
 afterEach(() => vi.unstubAllGlobals());
 const session = {
@@ -31,6 +37,35 @@ describe("managed widget sessions", () => {
       "https://api-dev.askbenny.ca/elevenlabs/signed-url?agentId=a%26b",
       { signal: controller.signal, cache: "no-store" }
     );
+  });
+  it("hands an early config request to the next reader once, then asks again", async () => {
+    const fetch = vi.fn().mockResolvedValue({ ok: true, json: async () => ({ body: session }) });
+    vi.stubGlobal("fetch", fetch);
+    const signal = new AbortController().signal;
+    const early = primeWidgetConfig("agent", undefined);
+    expect(await fetchWidgetConfig("agent", undefined, signal)).toBe(await early);
+    expect(fetch).toHaveBeenCalledTimes(1);
+    // Another agent or environment never takes it, and neither does a second reader.
+    await fetchWidgetConfig("agent", "development", signal).catch(() => {});
+    await fetchWidgetConfig("agent", undefined, signal);
+    expect(fetch).toHaveBeenCalledTimes(3);
+    expect(fetch).toHaveBeenLastCalledWith(
+      "https://api.askbenny.ca/elevenlabs/agents/config?agentId=agent",
+      { signal, cache: "no-store" }
+    );
+  });
+  it("does not hand over an early config request that has gone stale", async () => {
+    const fetch = vi.fn().mockResolvedValue({ ok: true, json: async () => ({ body: session }) });
+    vi.stubGlobal("fetch", fetch);
+    vi.useFakeTimers();
+    try {
+      await primeWidgetConfig("agent", undefined);
+      vi.advanceTimersByTime(10_000);
+      await fetchWidgetConfig("agent", undefined, new AbortController().signal);
+      expect(fetch).toHaveBeenCalledTimes(2);
+    } finally {
+      vi.useRealTimers();
+    }
   });
   it.each([
     { ok: false, body: session },

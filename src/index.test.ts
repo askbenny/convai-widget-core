@@ -3,6 +3,8 @@ import { describe, it, beforeAll, beforeEach, afterEach, expect, afterAll, vi } 
 import { Worker } from "./mocks/browser";
 import { setupWebComponent } from "./mocks/web-component";
 import { Variants } from "./types/config";
+import { http, HttpResponse } from "msw";
+import { MANAGED_TEXT_ONLY_WAIT_MS } from "./contexts/widget-config";
 
 describe("askbenny-convai", () => {
   beforeAll(() => Worker.start({ quiet: true, onUnhandledRequest: "error" }));
@@ -1693,6 +1695,97 @@ describe("askbenny-convai", () => {
 
       await expect.element(page.getByText("An error occurred")).toBeInTheDocument();
       await expect.element(page.getByText("ID")).toBeInTheDocument();
+    });
+  });
+
+  describe("chat only set in Ask Benny", () => {
+    afterEach(() => Worker.resetHandlers());
+
+    it.each(Variants)("$0 launcher offers the chat and no call", async (variant) => {
+      setupWebComponent({ "agent-id": "managed_chat_only", variant });
+
+      const messageButton = page.getByRole("button", { name: "Message" });
+      await expect.element(messageButton).toBeInTheDocument();
+      // The call entry point, relabelled "Start Chat" by the business, is gone.
+      await expect
+        .element(page.getByRole("button", { name: "Start Chat" }))
+        .not.toBeInTheDocument();
+
+      await messageButton.click();
+      await expect
+        .element(page.getByRole("textbox", { name: "Text message input" }))
+        .toBeInTheDocument();
+    });
+
+    it("waits for the setting, so the call button never shows first", async () => {
+      let release!: () => void;
+      const pending = new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      Worker.use(
+        http.get("https://api.askbenny.ca/elevenlabs/agents/config", async () => {
+          await pending;
+          return HttpResponse.json({
+            body: {
+              schemaVersion: 2,
+              agentId: "managed_chat_only",
+              branchId: "widget-managed_chat_only",
+              conversation: { textOnly: true },
+            },
+          });
+        })
+      );
+      setupWebComponent({ "agent-id": "managed_chat_only" });
+
+      await new Promise((resolve) => setTimeout(resolve, 300));
+      expect(page.getByRole("button", { name: "Start Chat" }).elements()).toHaveLength(0);
+      release();
+      await expect.element(page.getByRole("button", { name: "Message" })).toBeInTheDocument();
+      expect(page.getByRole("button", { name: "Start Chat" }).elements()).toHaveLength(0);
+    });
+
+    it("keeps the launcher when the setting cannot be read", async () => {
+      Worker.use(
+        http.get(
+          "https://api.askbenny.ca/elevenlabs/agents/config",
+          () => new HttpResponse(null, { status: 503 })
+        )
+      );
+      setupWebComponent({ "agent-id": "managed_chat_only" });
+
+      await expect.element(page.getByRole("button", { name: "Start Chat" })).toBeInTheDocument();
+    });
+
+    it("shows the launcher after a bounded wait, then follows a late answer", async () => {
+      let release!: () => void;
+      const pending = new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      Worker.use(
+        http.get("https://api.askbenny.ca/elevenlabs/agents/config", async () => {
+          await pending;
+          return HttpResponse.json({
+            body: {
+              schemaVersion: 2,
+              agentId: "managed_chat_only",
+              branchId: "widget-managed_chat_only",
+              conversation: { textOnly: true },
+            },
+          });
+        })
+      );
+      setupWebComponent({ "agent-id": "managed_chat_only" });
+
+      await expect
+        .element(page.getByRole("button", { name: "Start Chat" }), {
+          timeout: MANAGED_TEXT_ONLY_WAIT_MS + 2000,
+        })
+        .toBeInTheDocument();
+      release();
+      await expect.element(page.getByRole("button", { name: "Message" })).toBeInTheDocument();
+      await expect
+        .element(page.getByRole("button", { name: "Start Chat" }))
+        .not.toBeInTheDocument();
     });
   });
 

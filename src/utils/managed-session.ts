@@ -23,18 +23,40 @@ export function widgetApiOrigin(environment?: string): string {
   throw new Error("Unsupported website assistant environment.");
 }
 
+// The launcher needs the agent's chat-only setting before it first paints, and the
+// session provider asks for the same response as soon as it mounts. The second
+// caller takes the first one's request instead of sending it again.
+const PRIMED_CONFIG_MAX_AGE_MS = 10_000;
+const primedConfigs = new Map<string, { at: number; request: Promise<PublicAgentConfig> }>();
+const primedConfigKey = (agentId: string, environment: string | undefined) =>
+  `${environment || "production"}:${agentId}`;
+
+/** Starts the config request early. Never aborted: each reader ignores a late answer itself. */
+export function primeWidgetConfig(
+  agentId: string,
+  environment: string | undefined
+): Promise<PublicAgentConfig> {
+  const request = requestWidget("agents/config", agentId, environment);
+  primedConfigs.set(primedConfigKey(agentId, environment), { at: Date.now(), request });
+  return request;
+}
+
 export async function fetchWidgetConfig(
   agentId: string,
   environment: string | undefined,
   signal: AbortSignal
 ): Promise<PublicAgentConfig> {
+  const key = primedConfigKey(agentId, environment);
+  const primed = primedConfigs.get(key);
+  primedConfigs.delete(key);
+  if (primed && Date.now() - primed.at < PRIMED_CONFIG_MAX_AGE_MS) return primed.request;
   return requestWidget("agents/config", agentId, environment, signal);
 }
 async function requestWidget(
   path: string,
   agentId: string,
   environment: string | undefined,
-  signal: AbortSignal
+  signal?: AbortSignal
 ) {
   const response = await fetch(
     `${widgetApiOrigin(environment)}/elevenlabs/${path}?agentId=${encodeURIComponent(agentId)}`,

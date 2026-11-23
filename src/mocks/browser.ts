@@ -66,6 +66,13 @@ export const AGENTS = {
     text_only: true,
     disable_banner: true,
   },
+  // "Chat only" set in Ask Benny: the provider's own flag stays off.
+  managed_chat_only: {
+    ...BASIC_CONFIG,
+    text_only: false,
+    text_contents: { start_call: "Start Chat" },
+    terms_html: undefined,
+  },
   fail: BASIC_CONFIG,
   // Held in the concurrency wait queue and never admitted.
   queued: BASIC_CONFIG,
@@ -660,6 +667,8 @@ export function persistentConversationIdFor(token: string | null) {
   return token ? persistentConversations.get(token)?.conversationId : undefined;
 }
 
+const MANAGED_CHAT_ONLY_AGENTS: string[] = ["managed_chat_only"];
+
 function isValidAgentId(agentId: string): agentId is keyof typeof AGENTS {
   return agentId in AGENTS;
 }
@@ -787,7 +796,9 @@ export const Worker = setupWorker(
           branchId: `widget-${agentId}`,
           signedUrl: `${import.meta.env.VITE_WEBSOCKET_URL_US || "wss://api.elevenlabs.io"}/v1/convai/conversation?agent_id=${agentId}&branch_id=widget-${agentId}`,
           agent: { firstMessage: AGENTS[agentId].first_message },
-          conversation: { textOnly: AGENTS[agentId].text_only },
+          conversation: {
+            textOnly: AGENTS[agentId].text_only || MANAGED_CHAT_ONLY_AGENTS.includes(agentId),
+          },
           dynamicVariables: { widget_time_iso: new Date().toISOString() },
         },
       });
