@@ -72,6 +72,7 @@ export const AGENTS = {
     text_only: false,
     text_contents: { start_call: "Start Chat" },
     terms_html: undefined,
+    first_message: "[happy] Welcome in",
   },
   fail: BASIC_CONFIG,
   // Held in the concurrency wait queue and never admitted.

@@ -25,6 +25,7 @@ import { useSessionConfig, useSessionPresentation } from "./session-config";
 import { interpolateDynamicVariables, parseDynamicVariables } from "../utils/dynamicVariables";
 
 const WidgetConfigContext = createContext<ReadonlySignal<WidgetConfig> | null>(null);
+const AgentTextOnlyContext = createContext<ReadonlySignal<boolean> | null>(null);
 
 // Self-hosted orchestrators have no HTTP API to serve a widget appearance config.
 const DefaultOrchestratorWidgetConfig: WidgetConfig = {
@@ -184,6 +185,10 @@ export function WidgetConfigProvider({ children }: WidgetConfigProviderProps) {
   const endConfirmation = useAttribute("end-confirmation");
   const showLanguageSelectorOnTrigger = useAttribute("show-language-selector-on-trigger");
 
+  const agentTextOnly = useComputed(
+    () => parseBoolAttribute(overrideTextOnly.value) ?? fetchedConfig.value?.text_only ?? false
+  );
+
   const value = useComputed<WidgetConfig | null>(() => {
     if (!fetchedConfig.value) {
       return null;
@@ -194,9 +199,7 @@ export function WidgetConfigProvider({ children }: WidgetConfigProviderProps) {
     const patchedTermsKey = termsKey.value ?? fetchedConfig.value.terms_key;
 
     // The session Ask Benny signs for a chat-only agent is text only whatever the page asks for.
-    const textOnly =
-      managedTextOnly.value ||
-      (parseBoolAttribute(overrideTextOnly.value) ?? fetchedConfig.value.text_only ?? false);
+    const textOnly = managedTextOnly.value || agentTextOnly.value;
 
     const patchedMicMuting =
       parseBoolAttribute(micMuting.value) ?? fetchedConfig.value.mic_muting_enabled;
@@ -213,7 +216,9 @@ export function WidgetConfigProvider({ children }: WidgetConfigProviderProps) {
     const patchedDismissible =
       parseBoolAttribute(dismissible.value) ?? fetchedConfig.value.dismissible ?? false;
     const patchedStripAudioTags =
-      parseBoolAttribute(stripAudioTags.value) ?? fetchedConfig.value.strip_audio_tags ?? !textOnly;
+      parseBoolAttribute(stripAudioTags.value) ??
+      fetchedConfig.value.strip_audio_tags ??
+      !agentTextOnly.value;
     const patchedUseRtc = parseBoolAttribute(useRtc.value) ?? fetchedConfig.value.use_rtc ?? false;
     const patchedShowAgentStatus =
       parseBoolAttribute(showAgentStatus.value) ?? fetchedConfig.value.show_agent_status ?? false;
@@ -278,7 +283,9 @@ export function WidgetConfigProvider({ children }: WidgetConfigProviderProps) {
 
   return (
     <WidgetConfigContext.Provider value={value as ReadonlySignal<WidgetConfig>}>
-      {children}
+      <AgentTextOnlyContext.Provider value={agentTextOnly}>
+        {children}
+      </AgentTextOnlyContext.Provider>
     </WidgetConfigContext.Provider>
   );
 }
@@ -292,6 +299,14 @@ export function useTextOnly() {
 
   // Already resolved by the provider: Ask Benny's setting, the attribute, then the agent's own.
   return useComputed(() => config.value.text_only ?? false);
+}
+
+/**
+ * Whether the agent itself is text only, before Ask Benny's "Chat only" setting. A chat-only
+ * widget on a voice agent still gets text written for speech, audio tags included.
+ */
+export function useAgentTextOnly() {
+  return useContextSafely(AgentTextOnlyContext);
 }
 
 export function useIsConversationTextOnly() {

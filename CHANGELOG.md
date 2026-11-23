@@ -4,6 +4,7 @@
 
 - A website assistant set to "Chat only" in Ask Benny opens with the chat button alone. The launcher used to read only the provider's own text-only flag, which that setting does not change, so it showed the call button (with a phone icon) beside the chat button, and the call button opened a text chat. The launcher, the sheet and the page layout now follow the same setting the session does.
 - The setting is read before the launcher first appears, in the same request the session provider already made on load, so there is no extra request and no call button flashing first. The launcher waits at most 2 seconds for it; a slower answer still applies when it arrives, and a failed one leaves the launcher as the provider describes it.
+- Audio tags are still stripped from the greeting and messages of a chat-only assistant whose agent is voice capable. Only an agent that is text only itself keeps them.
 
 ## 1.5.1
 

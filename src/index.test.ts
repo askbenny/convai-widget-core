@@ -1715,6 +1715,9 @@ describe("askbenny-convai", () => {
       await expect
         .element(page.getByRole("textbox", { name: "Text message input" }))
         .toBeInTheDocument();
+      // The agent is still voice capable: its greeting loses the tags written for speech.
+      await expect.element(page.getByText("Welcome in")).toBeInTheDocument();
+      await expect.element(page.getByText("[happy]")).not.toBeInTheDocument();
     });
 
     it("waits for the setting, so the call button never shows first", async () => {

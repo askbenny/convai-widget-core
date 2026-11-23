@@ -38,17 +38,21 @@ describe("managed widget sessions", () => {
       { signal: controller.signal, cache: "no-store" }
     );
   });
-  it("hands an early config request to the next reader once, then asks again", async () => {
+  it("hands an early config request to its own agent and environment, once", async () => {
     const fetch = vi.fn().mockResolvedValue({ ok: true, json: async () => ({ body: session }) });
     vi.stubGlobal("fetch", fetch);
     const signal = new AbortController().signal;
     const early = primeWidgetConfig("agent", undefined);
-    expect(await fetchWidgetConfig("agent", undefined, signal)).toBe(await early);
     expect(fetch).toHaveBeenCalledTimes(1);
-    // Another agent or environment never takes it, and neither does a second reader.
-    await fetchWidgetConfig("agent", "development", signal).catch(() => {});
-    await fetchWidgetConfig("agent", undefined, signal);
+    // Another environment or agent asks for itself and leaves the early request alone.
+    await fetchWidgetConfig("agent", "development", signal);
+    await fetchWidgetConfig("other", undefined, signal).catch(() => {});
     expect(fetch).toHaveBeenCalledTimes(3);
+    expect(await fetchWidgetConfig("agent", undefined, signal)).toBe(await early);
+    expect(fetch).toHaveBeenCalledTimes(3);
+    // Taken once: the next reader asks again.
+    await fetchWidgetConfig("agent", undefined, signal);
+    expect(fetch).toHaveBeenCalledTimes(4);
     expect(fetch).toHaveBeenLastCalledWith(
       "https://api.askbenny.ca/elevenlabs/agents/config?agentId=agent",
       { signal, cache: "no-store" }

@@ -1,6 +1,7 @@
 import { useComputed, useSignal } from "@preact/signals";
 import {
   useFirstMessage,
+  useAgentTextOnly,
   useIsConversationTextOnly,
   useTextInputEnabled,
   useTextOnly,
@@ -42,6 +43,7 @@ const ORIGIN_CLASSES: Record<Placement, string> = {
 
 export function Sheet({ open, onClose }: SheetProps) {
   const textOnly = useTextOnly();
+  const agentTextOnly = useAgentTextOnly();
   const isConversationTextOnly = useIsConversationTextOnly();
   const config = useWidgetConfig();
   const placement = config.value.placement;
@@ -73,9 +75,11 @@ export function Sheet({ open, onClose }: SheetProps) {
     if (isResumedSession.value) return undefined;
 
     // Voice-capable agents write first_message for TTS, so strip its audio tags
-    // the way voice bubbles do. Text-only widgets keep them, which the
-    // `audio_tags_strip` test relies on.
-    const message = !textOnly.value && config.value.strip_audio_tags ? stripAudioTags(raw) : raw;
+    // the way voice bubbles do. Text-only agents keep them, which the
+    // `audio_tags_strip` test relies on. "Chat only" set in Ask Benny leaves
+    // the agent voice capable, so its greeting is still stripped.
+    const message =
+      !agentTextOnly.value && config.value.strip_audio_tags ? stripAudioTags(raw) : raw;
 
     if (isConversationTextOnly.value) return message;
 
